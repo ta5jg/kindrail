@@ -16,6 +16,8 @@ Bu doküman “KINDRAIL’i hızlı büyüyen ve para kazanan bir ürüne” dö
 ### Hedef
 - “1 dakikada oynanır, paylaşılır, ertesi gün geri gelinir.”
 
+See: `docs/PHASE0_PRODUCT.md`
+
 ### Çıktılar (deliverables)
 - **Core loop** 1 sayfa: “Daily battle → reward → upgrade → tekrar”
 - **Meta loop** 1 sayfa: koleksiyon, rarity, progression

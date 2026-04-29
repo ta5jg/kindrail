@@ -7,10 +7,11 @@ function unit(
   atk: number,
   def: number,
   spd: number,
+  slot: number,
   critPct = 0,
   critMulPct = 150
 ) {
-  return { id, archetype, hp, atk, def, spd, critPct, critMulPct };
+  return { id, archetype, hp, atk, def, spd, slot, critPct, critMulPct };
 }
 
 export function makeDemoTeams(): { a: KrTeam; b: KrTeam } {
@@ -18,15 +19,15 @@ export function makeDemoTeams(): { a: KrTeam; b: KrTeam } {
     a: {
       name: "RAIL",
       units: [
-        unit("a1", "soldier", 30, 8, 2, 10, 10, 150),
-        unit("a2", "archer", 18, 10, 1, 12, 5, 175)
+        unit("a1", "soldier", 30, 8, 2, 10, 0, 10, 150),
+        unit("a2", "archer", 18, 10, 1, 12, 6, 5, 175)
       ]
     },
     b: {
       name: "RIFT",
       units: [
-        unit("b1", "brute", 40, 7, 3, 8, 0, 150),
-        unit("b2", "rogue", 20, 9, 1, 14, 15, 160)
+        unit("b1", "brute", 40, 7, 3, 8, 0, 0, 150),
+        unit("b2", "rogue", 20, 9, 1, 14, 6, 15, 160)
       ]
     }
   };

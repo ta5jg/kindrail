@@ -27,7 +27,9 @@ export const KrUnit = z
     spd: z.number().int().min(1),
     // Optional tuning knobs
     critPct: z.number().int().min(0).max(100).default(0),
-    critMulPct: z.number().int().min(100).max(500).default(150)
+    critMulPct: z.number().int().min(100).max(500).default(150),
+    // Formation index: 0..(units.length-1). Lower indexes are "front row" by convention.
+    slot: z.number().int().min(0).max(11).default(0)
   })
   .strict();
 export type KrUnit = z.infer<typeof KrUnit>;
@@ -39,6 +41,23 @@ export const KrTeam = z
   })
   .strict();
 export type KrTeam = z.infer<typeof KrTeam>;
+
+export const KrStatusKind = z.enum(["shield", "bleed", "taunt", "stun"]);
+export type KrStatusKind = z.infer<typeof KrStatusKind>;
+
+export const KrStatusApply = z
+  .object({
+    kind: KrStatusKind,
+    // duration in ticks
+    dur: z.number().int().min(0).max(2000),
+    // magnitude depends on status
+    // - shield: absorbs dmg
+    // - bleed: dmg per tick
+    // - taunt/stun: usually magnitude=1
+    mag: z.number().int().min(0).max(1_000_000).default(0)
+  })
+  .strict();
+export type KrStatusApply = z.infer<typeof KrStatusApply>;
 
 export const KrBattleSimRequest = z
   .object({
@@ -54,11 +73,14 @@ export type KrBattleSimRequest = z.infer<typeof KrBattleSimRequest>;
 export const KrBattleEvent = z
   .object({
     t: z.number().int().nonnegative(),
-    kind: z.enum(["hit", "death", "end"]),
+    kind: z.enum(["hit", "death", "end", "status_apply", "status_tick", "ability"]),
     src: z.string().min(1).optional(),
     dst: z.string().min(1).optional(),
     dmg: z.number().int().min(0).optional(),
-    crit: z.boolean().optional()
+    crit: z.boolean().optional(),
+    status: KrStatusApply.optional(),
+    // for ability events
+    abilityId: z.string().min(1).optional()
   })
   .strict();
 export type KrBattleEvent = z.infer<typeof KrBattleEvent>;

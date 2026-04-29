@@ -4,6 +4,7 @@ import type { KrBattleSimRequest, KrBattleSimResult } from "@kindrail/protocol";
 import { decodeJsonFromUrlParam, encodeJsonToUrlParam, copyToClipboard } from "./share";
 import { makeRequest } from "./demoBattle";
 import { exportElementToPng } from "./exportPng";
+import { buildReplayFrames } from "./replay";
 
 type LoadState =
   | { kind: "idle" }
@@ -60,6 +61,7 @@ export function App() {
   });
 
   const [state, setState] = useState<LoadState>({ kind: "idle" });
+  const [tick, setTick] = useState<number>(0);
 
   useEffect(() => {
     sdk
@@ -89,6 +91,7 @@ export function App() {
       syncUrlFromReq(req);
       const res = await sdk.battleSim(req);
       setState({ kind: "ok", result: res });
+      setTick(0);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "unknown error";
       setState({ kind: "err", message: msg });
@@ -133,10 +136,62 @@ export function App() {
       syncUrlFromReq(req);
       const res = await sdk.battleSim(req);
       setState({ kind: "ok", result: res });
+      setTick(0);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "unknown error";
       setState({ kind: "err", message: msg });
     }
+  }
+
+  const frames = state.kind === "ok" ? buildReplayFrames(state.result) : null;
+  const maxTick = frames ? Math.max(0, frames.length - 1) : 0;
+  const frame = frames ? frames[Math.max(0, Math.min(maxTick, tick))] : null;
+
+  function renderFormation(req: KrBattleSimRequest) {
+    const aSlots = Array.from({ length: 12 }, () => null as null | { id: string; archetype: string });
+    const bSlots = Array.from({ length: 12 }, () => null as null | { id: string; archetype: string });
+    for (const u of req.a.units) aSlots[u.slot ?? 0] = { id: u.id, archetype: u.archetype };
+    for (const u of req.b.units) bSlots[u.slot ?? 0] = { id: u.id, archetype: u.archetype };
+
+    const Slot = ({ v }: { v: null | { id: string; archetype: string } }) => (
+      <div className="slot">
+        {v ? (
+          <>
+            <div className="id">{v.id}</div>
+            <div className="meta">{v.archetype}</div>
+          </>
+        ) : (
+          <div className="meta">—</div>
+        )}
+      </div>
+    );
+
+    return (
+      <div className="row" style={{ marginTop: 10 }}>
+        <div className="field">
+          <label>Formation A (slots 0–5 front, 6–11 back)</label>
+          <div className="miniGrid">
+            {aSlots.slice(0, 6).map((v, i) => (
+              <Slot key={`aF${i}`} v={v} />
+            ))}
+            {aSlots.slice(6, 12).map((v, i) => (
+              <Slot key={`aB${i}`} v={v} />
+            ))}
+          </div>
+        </div>
+        <div className="field">
+          <label>Formation B</label>
+          <div className="miniGrid">
+            {bSlots.slice(0, 6).map((v, i) => (
+              <Slot key={`bF${i}`} v={v} />
+            ))}
+            {bSlots.slice(6, 12).map((v, i) => (
+              <Slot key={`bB${i}`} v={v} />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -202,6 +257,15 @@ export function App() {
             <textarea value={requestText} onChange={(e) => setRequestText(e.target.value)} />
           </div>
 
+          {(() => {
+            try {
+              const req = JSON.parse(requestText) as KrBattleSimRequest;
+              return renderFormation(req);
+            } catch {
+              return null;
+            }
+          })()}
+
           <div className="btnbar">
             <button className="btn primary" onClick={runSim} disabled={state.kind === "loading"}>
               {state.kind === "loading" ? "Running…" : "Run battle"}
@@ -254,17 +318,24 @@ export function App() {
                   {window.location.href}
                 </div>
               </div>
-              <div className="log" style={{ marginTop: 10 }}>
-                {state.result.events.slice(0, 80).map((e: KrBattleSimResult["events"][number], i: number) => {
-                  if (e.kind === "hit")
-                    return `${String(i + 1).padStart(3, "0")}  t=${e.t}  ${e.src} → ${e.dst}  dmg=${
-                      e.dmg ?? 0
-                    }${e.crit ? " CRIT" : ""}`;
-                  if (e.kind === "death")
-                    return `${String(i + 1).padStart(3, "0")}  t=${e.t}  ${e.dst} died`;
-                  return `${String(i + 1).padStart(3, "0")}  t=${e.t}  END`;
-                }).join("\n")}
-                {state.result.events.length > 80 ? `\n… (${state.result.events.length - 80} more events)` : ""}
+
+              <div className="timeline">
+                <div className="pill">
+                  <strong>Replay</strong>
+                  <span className="mono">
+                    tick {tick}/{maxTick}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={maxTick}
+                  value={Math.max(0, Math.min(maxTick, tick))}
+                  onChange={(e) => setTick(Math.floor(Number(e.target.value) || 0))}
+                />
+                <div className="log">
+                  {(frame?.log ?? ["(no events)"]).join("\n")}
+                </div>
               </div>
             </>
           )}

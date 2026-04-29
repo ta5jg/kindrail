@@ -68,6 +68,12 @@
                     "minimum": 100,
                     "maximum": 500,
                     "default": 150
+                  },
+                  "slot": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 11,
+                    "default": 0
                   }
                 },
                 "required": [
@@ -137,6 +143,12 @@
                     "minimum": 100,
                     "maximum": 500,
                     "default": 150
+                  },
+                  "slot": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 11,
+                    "default": 0
                   }
                 },
                 "required": [

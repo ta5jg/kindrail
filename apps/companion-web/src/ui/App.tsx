@@ -5,6 +5,7 @@ import { decodeJsonFromUrlParam, encodeJsonToUrlParam, copyToClipboard } from ".
 import { makeRequest } from "./demoBattle";
 import { exportElementToPng } from "./exportPng";
 import { buildReplayFrames } from "./replay";
+import { getOrCreateDeviceId, getToken, setToken } from "./device";
 
 type LoadState =
   | { kind: "idle" }
@@ -33,6 +34,8 @@ export function App() {
 
   const [gatewayOk, setGatewayOk] = useState<boolean | null>(null);
   const [gatewayInfo, setGatewayInfo] = useState<string>("");
+  const [userId, setUserId] = useState<string>("");
+  const [currency, setCurrency] = useState<{ gold: number; shards: number; keys: number } | null>(null);
 
   const [seed, setSeed] = useState<string>(() => {
     const url = new URL(window.location.href);
@@ -64,6 +67,9 @@ export function App() {
   const [tick, setTick] = useState<number>(0);
 
   useEffect(() => {
+    const token = getToken();
+    if (token) sdk.setToken(token);
+
     sdk
       .health()
       .then((h) => {
@@ -73,6 +79,25 @@ export function App() {
       .catch(() => {
         setGatewayOk(false);
         setGatewayInfo("gateway offline");
+      });
+  }, [sdk]);
+
+  useEffect(() => {
+    // Auto guest login
+    const deviceId = getOrCreateDeviceId();
+    sdk
+      .authGuest({ v: 1, deviceId })
+      .then((a) => {
+        setToken(a.token);
+        sdk.setToken(a.token);
+        setUserId(a.userId);
+        return sdk.inventory();
+      })
+      .then((inv) => {
+        setCurrency(inv.inventory.currency);
+      })
+      .catch(() => {
+        // remain logged out
       });
   }, [sdk]);
 
@@ -143,6 +168,16 @@ export function App() {
     }
   }
 
+  async function claimDaily() {
+    try {
+      const res = await sdk.dailyClaim();
+      setCurrency(res.inventory.currency);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "unknown error";
+      setState({ kind: "err", message: msg });
+    }
+  }
+
   const frames = state.kind === "ok" ? buildReplayFrames(state.result) : null;
   const maxTick = frames ? Math.max(0, frames.length - 1) : 0;
   const frame = frames ? frames[Math.max(0, Math.min(maxTick, tick))] : null;
@@ -203,11 +238,28 @@ export function App() {
             Web-first companion client • deterministic battle sim • shareable replay links
           </div>
         </div>
-        <div className="pill">
-          <strong className={gatewayOk ? "ok" : gatewayOk === false ? "bad" : ""}>
-            {gatewayOk === null ? "…" : gatewayOk ? "OK" : "DOWN"}
-          </strong>
-          <span>{gatewayInfo}</span>
+        <div className="row">
+          <div className="pill">
+            <strong className={gatewayOk ? "ok" : gatewayOk === false ? "bad" : ""}>
+              {gatewayOk === null ? "…" : gatewayOk ? "OK" : "DOWN"}
+            </strong>
+            <span>{gatewayInfo}</span>
+          </div>
+          <div className="pill">
+            <strong>USER</strong>
+            <span className="mono">{userId ? userId : "—"}</span>
+          </div>
+          <div className="pill">
+            <strong>G</strong>
+            <span className="mono">{currency ? currency.gold : "—"}</span>
+            <strong>S</strong>
+            <span className="mono">{currency ? currency.shards : "—"}</span>
+            <strong>K</strong>
+            <span className="mono">{currency ? currency.keys : "—"}</span>
+          </div>
+          <button className="btn" onClick={claimDaily} disabled={!userId}>
+            Claim daily
+          </button>
         </div>
       </div>
 

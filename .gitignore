@@ -6,6 +6,13 @@ build
 .turbo
 .cache
 *.tsbuildinfo
+.kr-data
+.kr-data/
+.kr-data/**
+.kr-data-*
+.kr-data-*/**
+.kr-data-*/
+.kr-data-*/** 
 .env
 .env.*
 !.env.example

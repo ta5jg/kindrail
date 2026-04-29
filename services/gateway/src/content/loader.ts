@@ -8,10 +8,10 @@ export type LoadedContent = {
   unitById: Map<string, KrUnitArchetypeDef>;
 };
 
-export async function loadContent(): Promise<LoadedContent> {
+export async function loadContent(contentVersion = "v0.0.1"): Promise<LoadedContent> {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
-  const p = path.join(__dirname, "units.catalog.json");
+  const p = path.join(__dirname, "catalogs", `units.${contentVersion}.json`);
   const raw = await fs.readFile(p, "utf8");
   const json = JSON.parse(raw);
   const catalog = KrUnitCatalog.parse(json);

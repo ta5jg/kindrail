@@ -40,21 +40,29 @@ import { loadContent } from "./content/loader.js";
 import { makeDailyOffers, upgradeCost } from "./meta/shop.js";
 import { OFFERS, getOffer } from "./monetization/offers.js";
 import { grantOfferToUser } from "./monetization/fulfill.js";
+import { FixedWindowRateLimiter } from "./ops/ratelimit.js";
+import { Metrics } from "./ops/metrics.js";
+import { FlagStore } from "./ops/flags.js";
 
 const env = readEnv();
 
 const store = new FileStore({ dir: env.KR_STORE_DIR });
 await store.load();
-const content = await loadContent();
+let content = await loadContent(env.KR_CONTENT_VERSION);
+const flags = new FlagStore(env.KR_STORE_DIR);
+await flags.load();
+const limiter = new FixedWindowRateLimiter(env.KR_RATE_WINDOW_MS);
+const metrics = new Metrics();
 
 const app = Fastify({
+  bodyLimit: env.KR_BODY_LIMIT_BYTES,
   logger: {
     level: "info"
   }
 });
 
 await app.register(cors, {
-  origin: true,
+  origin: env.KR_CORS_ORIGIN === "*" ? true : env.KR_CORS_ORIGIN.split(",").map((s) => s.trim()),
   credentials: false
 });
 
@@ -71,6 +79,30 @@ app.addHook("onRequest", async (req, reply) => {
   req.log.debug({ url: req.url, method: req.method }, "request");
 });
 
+app.addHook("preHandler", async (req, reply) => {
+  // basic rate limit (ip or user)
+  const userId = req.krUserId;
+  const ip = req.ip || "unknown";
+  const now = Date.now();
+
+  const key = userId ? `u:${userId}` : `ip:${ip}`;
+  const max = userId ? env.KR_RATE_MAX_PER_WINDOW_USER : env.KR_RATE_MAX_PER_WINDOW_IP;
+  const r = limiter.allow(key, max, now);
+  reply.header("x-kr-rate-remaining", String(r.remaining));
+  reply.header("x-kr-rate-reset-ms", String(r.resetAtMs));
+  if (!r.ok) {
+    metrics.rateLimited += 1;
+    reply.code(429);
+    return reply.send({ ok: false, error: "RATE_LIMITED" });
+  }
+});
+
+app.addHook("onResponse", async (req, reply) => {
+  const route = (reply.routeOptions?.url ?? req.url.split("?")[0]) || "unknown";
+  metrics.incRoute(route);
+  metrics.incStatus(reply.statusCode);
+});
+
 app.get("/health", async () => {
   const body = HealthResponse.parse({
     ok: true,
@@ -79,6 +111,26 @@ app.get("/health", async () => {
     nowMs: Date.now()
   });
   return body;
+});
+
+app.get("/metrics", async (_req, reply) => {
+  reply.header("content-type", "text/plain; charset=utf-8");
+  return metrics.renderPrometheus("kindrail-gateway");
+});
+
+app.get("/flags", async () => {
+  return { v: 1, ok: true, flags: flags.getAll() };
+});
+
+app.post("/admin/reload", async (req, reply) => {
+  const token = req.headers["x-kr-admin-token"];
+  if (!env.KR_ADMIN_TOKEN || token !== env.KR_ADMIN_TOKEN) {
+    reply.code(401);
+    return { ok: false, error: "UNAUTHORIZED" };
+  }
+  content = await loadContent(env.KR_CONTENT_VERSION);
+  await flags.load();
+  return { ok: true };
 });
 
 app.get("/daily-seed", async () => {
@@ -108,12 +160,17 @@ app.get("/catalog/units", async () => {
 
 // ---------- Monetization (MVP) ----------
 app.get("/offers", async () => {
+  if (!flags.isEnabled("monetization_offers")) return { ok: false, error: "DISABLED" };
   return KrOffersResponse.parse({ v: 1, ok: true, offers: OFFERS });
 });
 
 app.post("/checkout/create", async (req, reply) => {
   try {
     const userId = requireAuth(req);
+    if (!flags.isEnabled("monetization_offers")) {
+      reply.code(400);
+      return { ok: false, error: "DISABLED" };
+    }
     const body = KrCheckoutCreateRequest.parse(req.body);
     const offer = getOffer(body.offerId);
     if (!offer) {

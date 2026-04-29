@@ -26,6 +26,13 @@ import {
   KrOffersResponse,
   KrPurchaseStatusResponse
 } from "./monetization.js";
+import {
+  KrPushWebSubscribeRequest,
+  KrPushWebSubscribeResponse,
+  KrPushWebUnsubscribeRequest,
+  KrPushWebUnsubscribeResponse,
+  KrPushWebVapidResponse
+} from "./push.js";
 
 /**
  * Central schema registry for:
@@ -64,6 +71,11 @@ export const KrV1Schemas = {
   KrOffersResponse,
   KrCheckoutCreateRequest,
   KrCheckoutCreateResponse,
-  KrPurchaseStatusResponse
+  KrPurchaseStatusResponse,
+  KrPushWebVapidResponse,
+  KrPushWebSubscribeRequest,
+  KrPushWebSubscribeResponse,
+  KrPushWebUnsubscribeRequest,
+  KrPushWebUnsubscribeResponse
 } satisfies Record<string, z.ZodTypeAny>;
 

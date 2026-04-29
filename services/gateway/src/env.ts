@@ -17,7 +17,10 @@ const Env = z
     KR_RATE_MAX_PER_WINDOW_IP: z.coerce.number().int().min(1).max(10000).default(120),
     KR_RATE_MAX_PER_WINDOW_USER: z.coerce.number().int().min(1).max(10000).default(240),
     STRIPE_SECRET_KEY: z.string().optional(),
-    STRIPE_WEBHOOK_SECRET: z.string().optional()
+    STRIPE_WEBHOOK_SECRET: z.string().optional(),
+    KR_VAPID_PUBLIC_KEY: z.string().min(1).optional(),
+    KR_VAPID_PRIVATE_KEY: z.string().min(1).optional(),
+    KR_PUSH_SUBJECT: z.string().min(3).default("mailto:ops@kindrail.local")
   })
   .passthrough();
 

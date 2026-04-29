@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import { z } from "zod";
 import cors from "@fastify/cors";
 import { nanoid } from "nanoid";
 import {
@@ -29,7 +30,12 @@ import {
   KrCheckoutCreateRequest,
   KrCheckoutCreateResponse,
   KrOffersResponse,
-  KrPurchaseStatusResponse
+  KrPurchaseStatusResponse,
+  KrPushWebSubscribeRequest,
+  KrPushWebSubscribeResponse,
+  KrPushWebUnsubscribeRequest,
+  KrPushWebUnsubscribeResponse,
+  KrPushWebVapidResponse
 } from "@kindrail/protocol";
 import { readEnv } from "./env.js";
 import { runBattleSim } from "./sim/battleSim.js";
@@ -43,6 +49,8 @@ import { grantOfferToUser } from "./monetization/fulfill.js";
 import { FixedWindowRateLimiter } from "./ops/ratelimit.js";
 import { Metrics } from "./ops/metrics.js";
 import { FlagStore } from "./ops/flags.js";
+import { pushWebSubscriptionId } from "./push/subscriptionId.js";
+import { sendWebPushJson, setVapid } from "./push/webPushSend.js";
 
 const env = readEnv();
 
@@ -53,6 +61,16 @@ const flags = new FlagStore(env.KR_STORE_DIR);
 await flags.load();
 const limiter = new FixedWindowRateLimiter(env.KR_RATE_WINDOW_MS);
 const metrics = new Metrics();
+
+function webPushKeysReady(): boolean {
+  return Boolean(env.KR_VAPID_PUBLIC_KEY && env.KR_VAPID_PRIVATE_KEY);
+}
+
+function ensureWebPushConfigured(): boolean {
+  if (!webPushKeysReady()) return false;
+  setVapid(env.KR_PUSH_SUBJECT, env.KR_VAPID_PUBLIC_KEY!, env.KR_VAPID_PRIVATE_KEY!);
+  return true;
+}
 
 const app = Fastify({
   bodyLimit: env.KR_BODY_LIMIT_BYTES,
@@ -120,6 +138,145 @@ app.get("/metrics", async (_req, reply) => {
 
 app.get("/flags", async () => {
   return { v: 1, ok: true, flags: flags.getAll() };
+});
+
+app.get("/push/web/vapid-public", async () => {
+  const enabled = flags.isEnabled("push_web") && webPushKeysReady();
+  return KrPushWebVapidResponse.parse({
+    v: 1,
+    ok: true,
+    enabled,
+    publicKey: enabled ? env.KR_VAPID_PUBLIC_KEY : undefined
+  });
+});
+
+app.post("/push/web/subscribe", async (req, reply) => {
+  try {
+    if (!flags.isEnabled("push_web")) {
+      reply.code(400);
+      return { ok: false, error: "DISABLED" };
+    }
+    if (!ensureWebPushConfigured()) {
+      reply.code(503);
+      return { ok: false, error: "PUSH_DISABLED" };
+    }
+    const userId = requireAuth(req);
+    const body = KrPushWebSubscribeRequest.parse(req.body);
+    const dateUtc = utcDate();
+    const now = Date.now();
+    const subId = pushWebSubscriptionId(body.subscription.endpoint);
+
+    const out = store.mutate((s): { t: "ok" } | { t: "rate" } => {
+      const bucket = (s.pushWebSubs[userId] ??= {});
+      const existing = bucket[subId];
+      if (!existing) {
+        if (!incCap(s, "pushSubscribe", userId, dateUtc, 50)) return { t: "rate" };
+      }
+      bucket[subId] = {
+        subId,
+        endpoint: body.subscription.endpoint,
+        p256dh: body.subscription.keys.p256dh,
+        auth: body.subscription.keys.auth,
+        createdAtMs: existing?.createdAtMs ?? now,
+        updatedAtMs: now
+      };
+      return { t: "ok" };
+    });
+
+    if (out.t === "rate") {
+      reply.code(429);
+      return { ok: false, error: "RATE_LIMITED" };
+    }
+
+    return KrPushWebSubscribeResponse.parse({ v: 1, ok: true, subscriptionId: subId });
+  } catch (err) {
+    if (err instanceof Error && err.message === "UNAUTHORIZED") {
+      reply.code(401);
+      return { ok: false, error: "UNAUTHORIZED" };
+    }
+    req.log.warn({ err }, "push subscribe rejected");
+    reply.code(400);
+    return { ok: false, error: "BAD_REQUEST" };
+  }
+});
+
+app.post("/push/web/unsubscribe", async (req, reply) => {
+  try {
+    const userId = requireAuth(req);
+    const body = KrPushWebUnsubscribeRequest.parse(req.body);
+    const subId = pushWebSubscriptionId(body.endpoint);
+    const removed = store.mutate((s) => {
+      const bucket = s.pushWebSubs[userId];
+      if (!bucket?.[subId]) return false;
+      delete bucket[subId];
+      if (Object.keys(bucket).length === 0) delete s.pushWebSubs[userId];
+      return true;
+    });
+    return KrPushWebUnsubscribeResponse.parse({ v: 1, ok: true, removed });
+  } catch (err) {
+    if (err instanceof Error && err.message === "UNAUTHORIZED") {
+      reply.code(401);
+      return { ok: false, error: "UNAUTHORIZED" };
+    }
+    req.log.warn({ err }, "push unsubscribe rejected");
+    reply.code(400);
+    return { ok: false, error: "BAD_REQUEST" };
+  }
+});
+
+app.post("/admin/push/test", async (req, reply) => {
+  const token = req.headers["x-kr-admin-token"];
+  if (!env.KR_ADMIN_TOKEN || token !== env.KR_ADMIN_TOKEN) {
+    reply.code(401);
+    return { ok: false, error: "UNAUTHORIZED" };
+  }
+  if (!flags.isEnabled("push_web") || !ensureWebPushConfigured()) {
+    reply.code(503);
+    return { ok: false, error: "PUSH_DISABLED" };
+  }
+
+  const AdminPushTest = z
+    .object({
+      userId: z.string().min(1).optional(),
+      title: z.string().min(1).max(80).optional(),
+      body: z.string().min(1).max(200).optional()
+    })
+    .strict();
+
+  const body = AdminPushTest.parse(req.body ?? {});
+  const title = body.title ?? "KINDRAIL";
+  const text = body.body ?? "Daily battle is ready — open the app to claim and play.";
+
+  const snap = store.snapshot().pushWebSubs;
+  const targets: Array<{ endpoint: string; keys: { p256dh: string; auth: string } }> = [];
+  if (body.userId) {
+    const bucket = snap[body.userId] ?? {};
+    for (const row of Object.values(bucket)) {
+      targets.push({ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } });
+    }
+  } else {
+    let n = 0;
+    outer: for (const bucket of Object.values(snap)) {
+      for (const row of Object.values(bucket)) {
+        targets.push({ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } });
+        n += 1;
+        if (n >= 500) break outer;
+      }
+    }
+  }
+
+  let sent = 0;
+  let failed = 0;
+  for (const sub of targets) {
+    try {
+      await sendWebPushJson(sub, { kind: "kindrail.push", v: 1, title, body: text, atMs: Date.now() });
+      sent += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  return { ok: true, sent, failed, targets: targets.length };
 });
 
 app.post("/admin/reload", async (req, reply) => {

@@ -3,6 +3,13 @@ import path from "node:path";
 
 export type Flags = Record<string, boolean>;
 
+const DEFAULT_FLAGS: Flags = {
+  growth_referral: true,
+  growth_share_rewards: true,
+  monetization_offers: true,
+  push_web: true
+};
+
 export class FlagStore {
   private readonly file: string;
   private flags: Flags = {};
@@ -18,13 +25,10 @@ export class FlagStore {
       const json = JSON.parse(raw) as unknown;
       if (json && typeof json === "object") this.flags = json as Flags;
     } catch {
-      this.flags = {
-        growth_referral: true,
-        growth_share_rewards: true,
-        monetization_offers: true
-      };
+      this.flags = { ...DEFAULT_FLAGS };
       await this.save();
     }
+    this.flags = { ...DEFAULT_FLAGS, ...this.flags };
     this.loaded = true;
   }
 

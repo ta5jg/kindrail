@@ -10,5 +10,6 @@ export * from "./v1/shop.js";
 export * from "./v1/progression.js";
 export * from "./v1/growth.js";
 export * from "./v1/monetization.js";
+export * from "./v1/push.js";
 export * from "./v1/registry.js";
 

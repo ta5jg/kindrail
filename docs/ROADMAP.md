@@ -196,6 +196,8 @@ See: `docs/PHASE4_GROWTH.md`
 - Push notifications
 - Offline-friendly UI
 
+See: `docs/PHASE7_NATIVE.md`
+
 ---
 
 ## “Şimdi ne yapıyoruz?” (en kısa kritik yol)

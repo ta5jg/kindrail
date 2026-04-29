@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { KindrailSdk } from "@kindrail/sdk-ts";
 import type { KrBattleSimRequest, KrBattleSimResult } from "@kindrail/protocol";
 import { decodeJsonFromUrlParam, encodeJsonToUrlParam, copyToClipboard } from "./share";
@@ -6,6 +6,8 @@ import { makeRequest } from "./demoBattle";
 import { exportElementToPng } from "./exportPng";
 import { buildReplayFrames } from "./replay";
 import { getOrCreateDeviceId, getToken, setToken } from "./device";
+import { parseRunFlag, parseView, scrollToSection, stripDeepLinkParams } from "./deepLinks";
+import { urlBase64ToUint8Array } from "./push";
 
 type LoadState =
   | { kind: "idle" }
@@ -42,9 +44,12 @@ export function App() {
   const [leaderboardTop, setLeaderboardTop] = useState<Array<{ userId: string; score: number }>>([]);
   const [leaderboardMe, setLeaderboardMe] = useState<{ rank?: number; total: number; score?: number } | null>(null);
   const [shareLink, setShareLink] = useState<string>("");
+  const [pushNote, setPushNote] = useState<string>("");
+  const [pushBusy, setPushBusy] = useState(false);
   const [offers, setOffers] = useState<Array<{ offerId: string; name: string; priceCents: number; currency: string }>>(
     []
   );
+  const autoRunConsumed = useRef(false);
 
   const [seed, setSeed] = useState<string>(() => {
     const url = new URL(window.location.href);
@@ -124,6 +129,50 @@ export function App() {
   }, [sdk]);
 
   useEffect(() => {
+    const onUrl = () => {
+      const url = new URL(window.location.href);
+      const view = parseView(url);
+      if (view) {
+        requestAnimationFrame(() => scrollToSection(view));
+        stripDeepLinkParams(url, ["view"]);
+      }
+    };
+    onUrl();
+    window.addEventListener("popstate", onUrl);
+    window.addEventListener("kr:urlchanged", onUrl);
+    return () => {
+      window.removeEventListener("popstate", onUrl);
+      window.removeEventListener("kr:urlchanged", onUrl);
+    };
+  }, []);
+
+  useEffect(() => {
+    let sub: { remove: () => Promise<void> } | undefined;
+    void (async () => {
+      try {
+        const { App } = await import("@capacitor/app");
+        sub = await App.addListener("appUrlOpen", ({ url }) => {
+          try {
+            const incoming = new URL(url);
+            const cur = new URL(window.location.href);
+            if (incoming.origin !== cur.origin) return;
+            incoming.searchParams.forEach((v, k) => cur.searchParams.set(k, v));
+            window.history.replaceState({}, "", cur.toString());
+            window.dispatchEvent(new Event("kr:urlchanged"));
+          } catch {
+            // ignore
+          }
+        });
+      } catch {
+        // web-only dev
+      }
+    })();
+    return () => {
+      void sub?.remove();
+    };
+  }, []);
+
+  useEffect(() => {
     sdk
       .offers()
       .then((o) => {
@@ -168,7 +217,7 @@ export function App() {
     window.history.replaceState({}, "", url.toString());
   }
 
-  async function runSim() {
+  const runSim = useCallback(async () => {
     setState({ kind: "loading" });
     try {
       const req = JSON.parse(requestText) as KrBattleSimRequest;
@@ -180,7 +229,16 @@ export function App() {
       const msg = e instanceof Error ? e.message : "unknown error";
       setState({ kind: "err", message: msg });
     }
-  }
+  }, [sdk, requestText]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!parseRunFlag(url)) return;
+    if (autoRunConsumed.current) return;
+    autoRunConsumed.current = true;
+    stripDeepLinkParams(url, ["run"]);
+    void runSim();
+  }, [runSim]);
 
   async function copyShareLink() {
     await copyToClipboard(window.location.href);
@@ -340,6 +398,60 @@ export function App() {
     }
   }
 
+  async function registerWebPush() {
+    if (!userId) return;
+    setPushBusy(true);
+    setPushNote("");
+    try {
+      const v = await sdk.pushWebVapidPublic();
+      if (!v.enabled || !v.publicKey) {
+        setPushNote("Push is off until the gateway has KR_VAPID_PUBLIC_KEY + KR_VAPID_PRIVATE_KEY.");
+        return;
+      }
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        setPushNote("Push not supported in this browser.");
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const existing = await reg.pushManager.getSubscription();
+      if (existing) await existing.unsubscribe().catch(() => {});
+      const key = urlBase64ToUint8Array(v.publicKey);
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength) as ArrayBuffer
+      });
+      const json = sub.toJSON() as {
+        endpoint?: string;
+        keys?: { p256dh?: string; auth?: string };
+      };
+      if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
+        setPushNote("Subscription payload incomplete.");
+        return;
+      }
+      await sdk.pushWebSubscribe({
+        v: 1,
+        subscription: {
+          endpoint: json.endpoint,
+          keys: { p256dh: json.keys.p256dh, auth: json.keys.auth }
+        }
+      });
+      setPushNote("Subscribed. Server can send daily reminders (admin/cron).");
+    } catch (e) {
+      setPushNote(e instanceof Error ? e.message : "Push failed.");
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    sdk
+      .pushWebVapidPublic()
+      .then((r) => {
+        setPushNote((prev) => prev || (r.enabled ? "" : "Push: optional — configure VAPID keys on gateway to enable."));
+      })
+      .catch(() => {});
+  }, [sdk]);
+
   useEffect(() => {
     redeemTicketIfPresent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -434,7 +546,7 @@ export function App() {
       </div>
 
       <div className="grid">
-        <div className="card">
+        <div className="card" id="kr-section-battle">
           <h2>Battle request (SSOT JSON)</h2>
 
           <div className="row">
@@ -516,7 +628,7 @@ export function App() {
           </div>
         </div>
 
-        <div className="card">
+        <div className="card" id="kr-section-result">
           <h2>Result</h2>
 
           {state.kind === "idle" && <div className="log">Run a battle to see output.</div>}
@@ -565,7 +677,7 @@ export function App() {
       </div>
 
       <div className="grid" style={{ marginTop: 14 }}>
-        <div className="card">
+        <div className="card" id="kr-section-shop">
           <h2>Shop (daily)</h2>
           <div className="row">
             {shopOffers.map((o) => (
@@ -583,7 +695,7 @@ export function App() {
           </div>
         </div>
 
-        <div className="card">
+        <div className="card" id="kr-section-collection">
           <h2>Collection</h2>
           {Object.keys(owned).length === 0 ? (
             <div className="log">No units yet. Buy from shop.</div>
@@ -606,7 +718,7 @@ export function App() {
       </div>
 
       <div className="grid" style={{ marginTop: 14 }}>
-        <div className="card">
+        <div className="card" id="kr-section-monetization">
           <h2>Monetization (MVP)</h2>
           {offers.length === 0 ? (
             <div className="log">Loading offers…</div>
@@ -652,7 +764,7 @@ export function App() {
       </div>
 
       <div className="grid" style={{ marginTop: 14 }}>
-        <div className="card">
+        <div className="card" id="kr-section-leaderboard">
           <h2>Daily leaderboard</h2>
           <div className="btnbar">
             <button className="btn" onClick={refreshLeaderboard} disabled={!userId}>
@@ -680,7 +792,7 @@ export function App() {
           </div>
         </div>
 
-        <div className="card">
+        <div className="card" id="kr-section-share">
           <h2>Share rewards</h2>
           <div className="btnbar">
             <button className="btn" onClick={createShareTicketLink} disabled={!userId}>
@@ -691,6 +803,22 @@ export function App() {
           <div className="sub" style={{ marginTop: 10 }}>
             Tip: send the copied link to a friend. When they open it, they get a small reward and you get a small reward.
           </div>
+        </div>
+      </div>
+
+      <div className="grid" style={{ marginTop: 14 }}>
+        <div className="card" id="kr-section-push">
+          <h2>Push (daily reminder)</h2>
+          <div className="sub" style={{ marginBottom: 10 }}>
+            Web Push MVP: subscribe stores an endpoint on the gateway. Operators send with{" "}
+            <span className="mono">POST /admin/push/test</span> + <span className="mono">x-kr-admin-token</span>.
+          </div>
+          <div className="btnbar">
+            <button className="btn primary" onClick={() => void registerWebPush()} disabled={!userId || pushBusy}>
+              {pushBusy ? "Working…" : "Enable push on this device"}
+            </button>
+          </div>
+          {pushNote ? <div className="log" style={{ marginTop: 10 }}>{pushNote}</div> : null}
         </div>
       </div>
 

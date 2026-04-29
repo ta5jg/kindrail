@@ -62,6 +62,15 @@ export type PurchaseRow = {
   fulfilledAtMs?: number;
 };
 
+export type PushWebSubRow = {
+  subId: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
 export type StoreState = {
   users: Record<string, UserRow>; // userId -> row
   deviceToUser: Record<string, string>; // deviceId -> userId
@@ -74,6 +83,7 @@ export type StoreState = {
   caps: Record<string, number>; // generic counters, key `${kind}:${userId}:${dateUtc}`
   purchases: Record<string, PurchaseRow>; // purchaseId -> row
   webhookProcessed: Record<string, number>; // providerEventId -> processedAtMs
+  pushWebSubs: Record<string, Record<string, PushWebSubRow>>; // userId -> subId -> row
 };
 
 const DEFAULT_STATE: StoreState = {
@@ -88,7 +98,8 @@ const DEFAULT_STATE: StoreState = {
   caps: {}
   ,
   purchases: {},
-  webhookProcessed: {}
+  webhookProcessed: {},
+  pushWebSubs: {}
 };
 
 export class FileStore {
@@ -116,7 +127,8 @@ export class FileStore {
         shareTickets: parsed.shareTickets ?? {},
         caps: parsed.caps ?? {},
         purchases: parsed.purchases ?? {},
-        webhookProcessed: parsed.webhookProcessed ?? {}
+        webhookProcessed: parsed.webhookProcessed ?? {},
+        pushWebSubs: parsed.pushWebSubs ?? {}
       } as StoreState;
     } catch {
       this.state = { ...DEFAULT_STATE };

@@ -28,7 +28,12 @@ import {
   KrCheckoutCreateRequest,
   KrCheckoutCreateResponse,
   KrOffersResponse,
-  KrPurchaseStatusResponse
+  KrPurchaseStatusResponse,
+  KrPushWebSubscribeRequest,
+  KrPushWebSubscribeResponse,
+  KrPushWebUnsubscribeRequest,
+  KrPushWebUnsubscribeResponse,
+  KrPushWebVapidResponse
 } from "@kindrail/protocol";
 
 export type KindrailSdkOptions = {
@@ -317,6 +322,46 @@ export class KindrailSdk {
     if (!res.ok) throw new Error(`purchaseStatus failed: ${res.status}`);
     const json = await res.json();
     return KrPurchaseStatusResponse.parse(json);
+  }
+
+  async pushWebVapidPublic(): Promise<KrPushWebVapidResponse> {
+    const res = await this.fetchImpl(`${this.baseUrl}/push/web/vapid-public`, {
+      method: "GET",
+      headers: { accept: "application/json" }
+    });
+    if (!res.ok) throw new Error(`pushWebVapidPublic failed: ${res.status}`);
+    const json = await res.json();
+    return KrPushWebVapidResponse.parse(json);
+  }
+
+  async pushWebSubscribe(req: KrPushWebSubscribeRequest): Promise<KrPushWebSubscribeResponse> {
+    const res = await this.fetchImpl(`${this.baseUrl}/push/web/subscribe`, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        ...this.authHeaders()
+      },
+      body: JSON.stringify(req)
+    });
+    if (!res.ok) throw new Error(`pushWebSubscribe failed: ${res.status}`);
+    const json = await res.json();
+    return KrPushWebSubscribeResponse.parse(json);
+  }
+
+  async pushWebUnsubscribe(req: KrPushWebUnsubscribeRequest): Promise<KrPushWebUnsubscribeResponse> {
+    const res = await this.fetchImpl(`${this.baseUrl}/push/web/unsubscribe`, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        ...this.authHeaders()
+      },
+      body: JSON.stringify(req)
+    });
+    if (!res.ok) throw new Error(`pushWebUnsubscribe failed: ${res.status}`);
+    const json = await res.json();
+    return KrPushWebUnsubscribeResponse.parse(json);
   }
 }
 

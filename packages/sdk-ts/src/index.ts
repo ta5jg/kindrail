@@ -1,4 +1,4 @@
-import { HealthResponse } from "@kindrail/protocol";
+import { HealthResponse, KrBattleSimRequest, KrBattleSimResult } from "@kindrail/protocol";
 
 export type KindrailSdkOptions = {
   baseUrl: string;
@@ -22,6 +22,20 @@ export class KindrailSdk {
     if (!res.ok) throw new Error(`health failed: ${res.status}`);
     const json = await res.json();
     return HealthResponse.parse(json);
+  }
+
+  async battleSim(req: KrBattleSimRequest): Promise<KrBattleSimResult> {
+    const res = await this.fetchImpl(`${this.baseUrl}/sim/battle`, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(req)
+    });
+    if (!res.ok) throw new Error(`battleSim failed: ${res.status}`);
+    const json = await res.json();
+    return KrBattleSimResult.parse(json);
   }
 }
 

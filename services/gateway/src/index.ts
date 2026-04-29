@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import { nanoid } from "nanoid";
 import { HealthResponse } from "@kindrail/protocol";
 import { readEnv } from "./env.js";
+import { runBattleSim } from "./sim/battleSim.js";
 
 const env = readEnv();
 
@@ -36,6 +37,20 @@ app.get("/health", async () => {
     nowMs: Date.now()
   });
   return body;
+});
+
+app.post("/sim/battle", async (req, reply) => {
+  try {
+    const res = runBattleSim(req.body);
+    return res;
+  } catch (err) {
+    req.log.warn({ err }, "battle sim request rejected");
+    reply.code(400);
+    return {
+      ok: false,
+      error: "BAD_REQUEST"
+    };
+  }
 });
 
 await app.listen({ port: env.KR_PORT, host: env.KR_HOST });

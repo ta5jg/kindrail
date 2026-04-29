@@ -6,7 +6,7 @@ This repo is a monorepo:
 - `services/gateway`: TypeScript gateway for USDTgVerse / Q-Verse integrations
 - `packages/protocol`: SSOT schemas + codegen-friendly types
 - `packages/sdk-ts`: TypeScript SDK used by web/mobile companion apps
-- `apps/companion-web`: (next) web companion
+- `apps/companion-web`: web-first companion client (shareable battle replays)
 - `apps/companion-mobile`: (next) mobile companion
 - `apps/game-unity`: (next) Unity client (WebGL/iOS/Android)
 
@@ -25,6 +25,13 @@ pnpm i
 pnpm dev
 ```
 
-3) Open
-- `GET http://localhost:8787/health`
+3) Run web client
+
+```bash
+pnpm --filter @kindrail/companion-web dev
+```
+
+4) Open
+- Web: `http://localhost:5173`
+- Gateway health: `GET http://localhost:8787/health`
 

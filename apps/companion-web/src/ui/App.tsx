@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { KindrailSdk } from "@kindrail/sdk-ts";
-import type { KrBattleSimRequest, KrBattleSimResult } from "@kindrail/protocol";
+import type { KrBattleSimRequest, KrBattleSimResult, KrUnitArchetypeDef } from "@kindrail/protocol";
 import { decodeJsonFromUrlParam, encodeJsonToUrlParam, copyToClipboard } from "./share";
 import { makeRequest } from "./demoBattle";
 import { exportElementToPng } from "./exportPng";
@@ -8,11 +8,15 @@ import { buildReplayFrames } from "./replay";
 import { getOrCreateDeviceId, getToken, setToken } from "./device";
 import { parseRunFlag, parseView, scrollToSection, stripDeepLinkParams } from "./deepLinks";
 import { urlBase64ToUint8Array } from "./push";
+import { buildBattleRequest, type EnemyPreset } from "./deckBuilder";
+import { readInitialSquadFromUrl } from "./initialSquad";
+import { isOnboardingDone, setOnboardingDone } from "./onboarding";
+import { primeAudio, sfxDeath, sfxHit, sfxWin } from "./audio";
 
 type LoadState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "ok"; result: KrBattleSimResult }
+  | { kind: "ok"; result: KrBattleSimResult; request: KrBattleSimRequest }
   | { kind: "err"; message: string };
 
 function nowSeed(): string {
@@ -39,6 +43,13 @@ export function App() {
   const [userId, setUserId] = useState<string>("");
   const [currency, setCurrency] = useState<{ gold: number; shards: number; keys: number } | null>(null);
   const [catalogNameById, setCatalogNameById] = useState<Record<string, string>>({});
+  const [catalogDefs, setCatalogDefs] = useState<KrUnitArchetypeDef[]>([]);
+  const [playerSlots, setPlayerSlots] = useState<Array<string | null>>(() => readInitialSquadFromUrl());
+  const [enemyPreset, setEnemyPreset] = useState<EnemyPreset>("demo");
+  const [showAdvancedJson, setShowAdvancedJson] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(() => !isOnboardingDone());
+  const [replaySpeed, setReplaySpeed] = useState<1 | 2 | 4>(1);
+  const [autoReplay, setAutoReplay] = useState(false);
   const [shopOffers, setShopOffers] = useState<Array<{ offerId: string; archetype: string; priceGold: number }>>([]);
   const [owned, setOwned] = useState<Record<string, number>>({});
   const [leaderboardTop, setLeaderboardTop] = useState<Array<{ userId: string; score: number }>>([]);
@@ -103,6 +114,7 @@ export function App() {
         const map: Record<string, string> = {};
         for (const u of c.catalog.units) map[u.id] = u.name;
         setCatalogNameById(map);
+        setCatalogDefs(c.catalog.units);
       })
       .catch(() => {});
 
@@ -127,6 +139,16 @@ export function App() {
         // remain logged out
       });
   }, [sdk]);
+
+  useEffect(() => {
+    if (!catalogDefs.length) return;
+    try {
+      const req = buildBattleRequest({ seed, maxTicks, catalogDefs, playerSlots, enemyPreset });
+      setRequestText(JSON.stringify(req, null, 2));
+    } catch {
+      // ignore
+    }
+  }, [catalogDefs, playerSlots, enemyPreset, seed, maxTicks]);
 
   useEffect(() => {
     const onUrl = () => {
@@ -218,18 +240,23 @@ export function App() {
   }
 
   const runSim = useCallback(async () => {
+    primeAudio();
     setState({ kind: "loading" });
     try {
-      const req = JSON.parse(requestText) as KrBattleSimRequest;
+      const req = catalogDefs.length
+        ? buildBattleRequest({ seed, maxTicks, catalogDefs, playerSlots, enemyPreset })
+        : (JSON.parse(requestText) as KrBattleSimRequest);
+      setRequestText(JSON.stringify(req, null, 2));
       syncUrlFromReq(req);
       const res = await sdk.battleSim(req);
-      setState({ kind: "ok", result: res });
+      setState({ kind: "ok", result: res, request: req });
       setTick(0);
+      if (res.outcome === "a") sfxWin();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "unknown error";
       setState({ kind: "err", message: msg });
     }
-  }, [sdk, requestText]);
+  }, [sdk, requestText, catalogDefs, playerSlots, enemyPreset, seed, maxTicks]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -264,21 +291,24 @@ export function App() {
     if (state.kind !== "ok") return;
     const el = document.getElementById("kr-share-card");
     if (!el) return;
-    await exportElementToPng(el, `kindrail-battle-${seed}.png`);
+    await exportElementToPng(el, `kindrail-battle-${state.kind === "ok" ? state.request.seed.seed : seed}.png`);
   }
 
   async function useDailySeed() {
     try {
       const d = await sdk.dailySeed();
       setSeed(d.seed);
-      const req = makeRequest(d.seed, maxTicks);
+      const req = catalogDefs.length
+        ? buildBattleRequest({ seed: d.seed, maxTicks, catalogDefs, playerSlots, enemyPreset })
+        : makeRequest(d.seed, maxTicks);
       setRequestText(JSON.stringify(req, null, 2));
       // Run immediately for 1-click share
       setState({ kind: "loading" });
       syncUrlFromReq(req);
       const res = await sdk.battleSim(req);
-      setState({ kind: "ok", result: res });
+      setState({ kind: "ok", result: res, request: req });
       setTick(0);
+      if (res.outcome === "a") sfxWin();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "unknown error";
       setState({ kind: "err", message: msg });
@@ -345,9 +375,13 @@ export function App() {
   async function submitDailyToLeaderboard() {
     try {
       const d = await sdk.dailySeed();
-      const req = makeRequest(d.seed, maxTicks);
+      setSeed(d.seed);
+      const req = catalogDefs.length
+        ? buildBattleRequest({ seed: d.seed, maxTicks, catalogDefs, playerSlots, enemyPreset })
+        : makeRequest(d.seed, maxTicks);
+      setRequestText(JSON.stringify(req, null, 2));
       const sim = await sdk.battleSim(req);
-      setState({ kind: "ok", result: sim });
+      setState({ kind: "ok", result: sim, request: req });
       setTick(0);
 
       const submit = await sdk.leaderboardSubmit({ v: 1, dateUtc: d.dateUtc, battleRequest: req });
@@ -457,7 +491,43 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  const frames = state.kind === "ok" ? buildReplayFrames(state.result) : null;
+  const frames = useMemo(() => {
+    if (state.kind !== "ok") return null;
+    return buildReplayFrames(state.request, state.result);
+  }, [state.kind, state.kind === "ok" ? state.request : null, state.kind === "ok" ? state.result : null]);
+
+  const prevTickRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (state.kind === "loading") prevTickRef.current = null;
+  }, [state.kind]);
+
+  useEffect(() => {
+    if (state.kind !== "ok") {
+      prevTickRef.current = null;
+      return;
+    }
+    if (prevTickRef.current === tick) return;
+    prevTickRef.current = tick;
+    const fr = frames?.[tick];
+    if (!fr?.flashIds.length) return;
+    const died = fr.log.some((l) => l.includes(" died"));
+    if (died) sfxDeath();
+    else sfxHit();
+  }, [tick, frames, state]);
+
+  useEffect(() => {
+    if (state.kind !== "ok" || !autoReplay) return;
+    const maxT = Math.max(0, (frames?.length ?? 1) - 1);
+    const ms = Math.max(50, 240 / replaySpeed);
+    const id = window.setInterval(() => {
+      setTick((t) => {
+        const m = Math.max(0, (frames?.length ?? 1) - 1);
+        if (t >= m) return m;
+        return t + 1;
+      });
+    }, ms);
+    return () => window.clearInterval(id);
+  }, [state.kind, autoReplay, replaySpeed, frames?.length]);
   const maxTick = frames ? Math.max(0, frames.length - 1) : 0;
   const frame = frames ? frames[Math.max(0, Math.min(maxTick, tick))] : null;
 
@@ -514,7 +584,7 @@ export function App() {
         <div className="brand">
           <h1>KINDRAIL</h1>
           <div className="sub">
-            Web-first companion client • deterministic battle sim • shareable replay links
+            Phase 8 game UI • squad builder • animated replay • daily loop
           </div>
         </div>
         <div className="row">
@@ -547,25 +617,16 @@ export function App() {
 
       <div className="grid">
         <div className="card" id="kr-section-battle">
-          <h2>Battle request (SSOT JSON)</h2>
+          <h2>Battle</h2>
+          <div className="sub" style={{ marginBottom: 10 }}>
+            Pick 4 units (front/back), choose an enemy preset, then <strong>Run battle</strong> or{" "}
+            <strong>Daily battle</strong>. Replay shows real HP from the event stream.
+          </div>
 
           <div className="row">
             <div className="field">
               <label>seed</label>
-              <input
-                value={seed}
-                onChange={(e) => {
-                  const s = e.target.value;
-                  setSeed(s);
-                  try {
-                    const req = JSON.parse(requestText) as KrBattleSimRequest;
-                    const next: KrBattleSimRequest = { ...req, seed: { seed: s } };
-                    setRequestText(JSON.stringify(next, null, 2));
-                  } catch {
-                    // ignore
-                  }
-                }}
-              />
+              <input value={seed} onChange={(e) => setSeed(e.target.value)} />
             </div>
             <div className="field">
               <label>maxTicks</label>
@@ -574,22 +635,61 @@ export function App() {
                 onChange={(e) => {
                   const n = Math.max(1, Math.min(2000, Math.floor(Number(e.target.value) || 200)));
                   setMaxTicks(n);
-                  try {
-                    const req = JSON.parse(requestText) as KrBattleSimRequest;
-                    const next: KrBattleSimRequest = { ...req, maxTicks: n };
-                    setRequestText(JSON.stringify(next, null, 2));
-                  } catch {
-                    // ignore
-                  }
                 }}
               />
             </div>
           </div>
 
-          <div className="field" style={{ marginTop: 10 }}>
-            <label>request JSON</label>
-            <textarea value={requestText} onChange={(e) => setRequestText(e.target.value)} />
+          <div className="deckPanel">
+            <div className="deckTitle">Your squad</div>
+            <div className="squadRow">
+              {(["Front L", "Front R", "Back L", "Back R"] as const).map((label, i) => (
+                <div className="squadSlot" key={label}>
+                  <div className="slotLabel">{label}</div>
+                  <select
+                    className="select"
+                    value={playerSlots[i] ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value || null;
+                      const next = [...playerSlots];
+                      next[i] = v;
+                      setPlayerSlots(next);
+                    }}
+                  >
+                    <option value="">— empty —</option>
+                    {catalogDefs.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <div className="row" style={{ marginTop: 12, alignItems: "center" }}>
+              <div className="field" style={{ minWidth: 200 }}>
+                <label>Enemy</label>
+                <select
+                  className="select"
+                  value={enemyPreset}
+                  onChange={(e) => setEnemyPreset(e.target.value as EnemyPreset)}
+                >
+                  <option value="demo">Demo team (RIFT)</option>
+                  <option value="mirror">Mirror your squad</option>
+                </select>
+              </div>
+              <button type="button" className="btn" onClick={() => setShowAdvancedJson((v) => !v)}>
+                {showAdvancedJson ? "Hide" : "Show"} advanced JSON
+              </button>
+            </div>
           </div>
+
+          {showAdvancedJson ? (
+            <div className="field" style={{ marginTop: 10 }}>
+              <label>SSOT JSON (power users)</label>
+              <textarea value={requestText} onChange={(e) => setRequestText(e.target.value)} />
+            </div>
+          ) : null}
 
           {(() => {
             try {
@@ -609,7 +709,16 @@ export function App() {
             </button>
             <button
               className="btn"
-              onClick={() => setRequestText(JSON.stringify(makeRequest(nowSeed(), maxTicks), null, 2))}
+              onClick={() => {
+                const s = nowSeed();
+                setSeed(s);
+                if (catalogDefs.length) {
+                  const req = buildBattleRequest({ seed: s, maxTicks, catalogDefs, playerSlots, enemyPreset });
+                  setRequestText(JSON.stringify(req, null, 2));
+                } else {
+                  setRequestText(JSON.stringify(makeRequest(s, maxTicks), null, 2));
+                }
+              }}
             >
               New demo
             </button>
@@ -645,12 +754,36 @@ export function App() {
               <div id="kr-share-card" className="shareCard">
                 <div className="shareCardTitle">
                   <div className="k">KINDRAIL</div>
-                  <div className="meta mono">{seed}</div>
+                  <div className="meta mono">{state.kind === "ok" ? state.request.seed.seed : seed}</div>
                 </div>
                 <div className="log">{summarize(state.result)}</div>
                 <div className="log" style={{ marginTop: 8, color: "rgba(255,255,255,0.72)" }}>
                   {window.location.href}
                 </div>
+              </div>
+
+              <div className="unitHpGrid">
+                {[...state.request.a.units, ...state.request.b.units].map((u) => {
+                  const curHp = frame?.hp[u.id] ?? u.hp;
+                  const mx = frame?.maxHp[u.id] ?? u.hp;
+                  const pct = mx > 0 ? Math.min(100, Math.round((curHp / mx) * 100)) : 0;
+                  const dead = frame ? frame.alive[u.id] === false : false;
+                  const flash = frame?.flashIds.includes(u.id) ?? false;
+                  const side = state.request.a.units.some((x) => x.id === u.id) ? "A" : "B";
+                  return (
+                    <div key={u.id} className={`unitHp ${dead ? "dead" : ""} ${flash ? "flash" : ""}`}>
+                      <div className="unitHpTitle">
+                        <span className="mono">{side}</span> {u.id} · {u.archetype}
+                      </div>
+                      <div className="hpBar">
+                        <div style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="mono hpNums">
+                        {curHp}/{mx}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="timeline">
@@ -660,12 +793,40 @@ export function App() {
                     tick {tick}/{maxTick}
                   </span>
                 </div>
+                <div className="row" style={{ marginTop: 8, alignItems: "center" }}>
+                  <label className="inlineLab">
+                    <input
+                      type="checkbox"
+                      checked={autoReplay}
+                      onChange={(e) => {
+                        primeAudio();
+                        setAutoReplay(e.target.checked);
+                      }}
+                    />{" "}
+                    Auto-play
+                  </label>
+                  <div className="field" style={{ minWidth: 140, flex: "0 0 auto" }}>
+                    <label>Speed</label>
+                    <select
+                      className="select"
+                      value={replaySpeed}
+                      onChange={(e) => setReplaySpeed(Number(e.target.value) as 1 | 2 | 4)}
+                    >
+                      <option value={1}>1×</option>
+                      <option value={2}>2×</option>
+                      <option value={4}>4×</option>
+                    </select>
+                  </div>
+                </div>
                 <input
                   type="range"
                   min={0}
                   max={maxTick}
                   value={Math.max(0, Math.min(maxTick, tick))}
-                  onChange={(e) => setTick(Math.floor(Number(e.target.value) || 0))}
+                  onChange={(e) => {
+                    primeAudio();
+                    setTick(Math.floor(Number(e.target.value) || 0));
+                  }}
                 />
                 <div className="log">
                   {(frame?.log ?? ["(no events)"]).join("\n")}
@@ -830,6 +991,40 @@ export function App() {
           Tip: this page URL encodes the request. Share it and anyone can replay the same deterministic battle.
         </span>
       </div>
+
+      {onboardingOpen ? (
+        <div className="onbOverlay" role="dialog" aria-modal="true">
+          <div className="onbCard">
+            <h2 className="onbH">Welcome to KINDRAIL</h2>
+            <ol className="onbList">
+              <li>
+                <strong>Build</strong> your squad (4 slots).
+              </li>
+              <li>
+                Press <strong>Daily battle</strong> (needs gateway <span className="mono">OK</span>) or{" "}
+                <strong>Run battle</strong>.
+              </li>
+              <li>
+                Scrub <strong>Replay</strong> — HP bars track every hit. Turn on <strong>Auto-play</strong> to watch
+                it play out.
+              </li>
+            </ol>
+            <div className="btnbar" style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => {
+                  primeAudio();
+                  setOnboardingDone();
+                  setOnboardingOpen(false);
+                }}
+              >
+                Start
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

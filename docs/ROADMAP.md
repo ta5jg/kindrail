@@ -207,8 +207,8 @@ See: `docs/ROADMAP_V1_FULL.md`
 ---
 
 ## “Şimdi ne yapıyoruz?” (en kısa kritik yol)
-1) Faz 1’i “UI polish + replay viewer” ile tamamla
-2) Faz 2 “guest auth + inventory minimal” (daily claim)
-3) Faz 5 “starter pack” (ilk gelir)
-4) Faz 4 “leaderboard + referral” (büyüme)
+1) Faz 8 (v1) companion-web: squad builder + onboarding + replay HP + auto-play + SFX ✅
+2) Faz 2 “guest auth + inventory minimal” (daily claim) ✅
+3) Faz 5 “starter pack” (ilk gelir) ✅
+4) Faz 4 “leaderboard + referral” (büyüme) ✅
 

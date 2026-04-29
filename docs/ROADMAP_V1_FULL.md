@@ -18,15 +18,10 @@ Tanım (v1.0 hedefi):
 - “Bu bir tool değil, oyun.” Battle izlenebilir, kararlar anlaşılır, onboarding akıcı.
 
 ### Deliverables
-- **Deck/formation builder UI**
-  - JSON yok: kartlar, drag/drop slot, filtre/sıralama
-- **Onboarding v1**
-  - 60–90 sn: ilk battle → claim → shop → upgrade → tekrar
-- **Replay viewer v2**
-  - Basit animasyon: vurma, shield/bleed/stun ikonları, ölüm highlight
-  - “Fast / normal” hız
-- **Audio/VFX lite**
-  - 8–12 ses, 6–10 küçük VFX
+- **Deck/formation builder UI** ✅ (companion-web: 4 slot squad + enemy preset; JSON “advanced” olarak)
+- **Onboarding v1** ✅ (ilk açılış modal + localStorage)
+- **Replay viewer v2** ✅ (tick başına HP ileri sarma + vuruş flash + auto-play + 1×/2×/4×)
+- **Audio/VFX lite** ✅ (WebAudio hit/death/win; VFX = flash ring)
 
 ### KPI
 - **Time-to-first-win** < 90sn

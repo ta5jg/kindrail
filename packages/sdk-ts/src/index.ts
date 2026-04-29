@@ -33,12 +33,19 @@ import {
   KrPushWebSubscribeResponse,
   KrPushWebUnsubscribeRequest,
   KrPushWebUnsubscribeResponse,
-  KrPushWebVapidResponse
+  KrPushWebVapidResponse,
+  KrInternalPushDailyRequest,
+  KrInternalPushDailyResponse
 } from "@kindrail/protocol";
 
 export type KindrailSdkOptions = {
   baseUrl: string;
   fetchImpl?: typeof fetch;
+};
+
+export type KindrailInternalCronOptions = {
+  /** Same value as gateway env KR_INTERNAL_CRON_SECRET */
+  cronSecret: string;
 };
 
 export class KindrailSdk {
@@ -362,6 +369,25 @@ export class KindrailSdk {
     if (!res.ok) throw new Error(`pushWebUnsubscribe failed: ${res.status}`);
     const json = await res.json();
     return KrPushWebUnsubscribeResponse.parse(json);
+  }
+
+  /** Operator/cron: requires gateway `KR_INTERNAL_CRON_SECRET` (not the user JWT). */
+  async internalPushDaily(
+    req: KrInternalPushDailyRequest,
+    cron: KindrailInternalCronOptions
+  ): Promise<KrInternalPushDailyResponse> {
+    const res = await this.fetchImpl(`${this.baseUrl}/internal/push/daily`, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        "x-kr-internal-cron-secret": cron.cronSecret
+      },
+      body: JSON.stringify(req)
+    });
+    if (!res.ok) throw new Error(`internalPushDaily failed: ${res.status}`);
+    const json = await res.json();
+    return KrInternalPushDailyResponse.parse(json);
   }
 }
 

@@ -33,6 +33,7 @@ import {
   KrPushWebUnsubscribeResponse,
   KrPushWebVapidResponse
 } from "./push.js";
+import { KrInternalPushDailyRequest, KrInternalPushDailyResponse } from "./internal.js";
 
 /**
  * Central schema registry for:
@@ -76,6 +77,8 @@ export const KrV1Schemas = {
   KrPushWebSubscribeRequest,
   KrPushWebSubscribeResponse,
   KrPushWebUnsubscribeRequest,
-  KrPushWebUnsubscribeResponse
+  KrPushWebUnsubscribeResponse,
+  KrInternalPushDailyRequest,
+  KrInternalPushDailyResponse
 } satisfies Record<string, z.ZodTypeAny>;
 

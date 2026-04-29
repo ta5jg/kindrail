@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import Fastify from "fastify";
 import { z } from "zod";
 import cors from "@fastify/cors";
@@ -35,7 +36,9 @@ import {
   KrPushWebSubscribeResponse,
   KrPushWebUnsubscribeRequest,
   KrPushWebUnsubscribeResponse,
-  KrPushWebVapidResponse
+  KrPushWebVapidResponse,
+  KrInternalPushDailyRequest,
+  KrInternalPushDailyResponse
 } from "@kindrail/protocol";
 import { readEnv } from "./env.js";
 import { runBattleSim } from "./sim/battleSim.js";
@@ -72,6 +75,14 @@ function ensureWebPushConfigured(): boolean {
   return true;
 }
 
+function internalCronSecretValid(provided: string | undefined): boolean {
+  const secret = env.KR_INTERNAL_CRON_SECRET;
+  if (!secret || typeof provided !== "string" || provided.length < 1) return false;
+  const a = createHash("sha256").update(provided, "utf8").digest();
+  const b = createHash("sha256").update(secret, "utf8").digest();
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 const app = Fastify({
   bodyLimit: env.KR_BODY_LIMIT_BYTES,
   logger: {
@@ -98,6 +109,9 @@ app.addHook("onRequest", async (req, reply) => {
 });
 
 app.addHook("preHandler", async (req, reply) => {
+  const pathOnly = (req.url.split("?")[0] ?? "") as string;
+  if (pathOnly.startsWith("/internal/")) return;
+
   // basic rate limit (ip or user)
   const userId = req.krUserId;
   const ip = req.ip || "unknown";
@@ -277,6 +291,98 @@ app.post("/admin/push/test", async (req, reply) => {
   }
 
   return { ok: true, sent, failed, targets: targets.length };
+});
+
+app.post("/internal/push/daily", async (req, reply) => {
+  if (!env.KR_INTERNAL_CRON_SECRET) {
+    reply.code(503);
+    return { ok: false, error: "CRON_DISABLED" };
+  }
+  const hdr = req.headers["x-kr-internal-cron-secret"];
+  const provided = Array.isArray(hdr) ? hdr[0] : hdr;
+  if (!internalCronSecretValid(provided)) {
+    reply.code(401);
+    return { ok: false, error: "UNAUTHORIZED" };
+  }
+  if (!flags.isEnabled("push_web") || !ensureWebPushConfigured()) {
+    reply.code(503);
+    return { ok: false, error: "PUSH_DISABLED" };
+  }
+
+  const body = KrInternalPushDailyRequest.parse(req.body ?? { v: 1 });
+  const dateUtc = body.dateUtc ?? utcDate();
+  const dryRun = Boolean(body.dryRun);
+  const limit = Math.min(10_000, Math.max(1, body.limit ?? 2000));
+
+  let scanned = 0;
+  let sent = 0;
+  let skipped = 0;
+  let failed = 0;
+  let removed = 0;
+
+  const snap = store.snapshot().pushWebSubs;
+  outer: for (const [userId, bucket] of Object.entries(snap)) {
+    for (const row of Object.values(bucket)) {
+      if (scanned >= limit) break outer;
+      scanned += 1;
+      const k = capKey("pushDailySub", row.subId, dateUtc);
+      const capVal = (store.snapshot().caps[k] ?? 0) | 0;
+      if (capVal >= 1) {
+        skipped += 1;
+        continue;
+      }
+      if (dryRun) {
+        skipped += 1;
+        continue;
+      }
+      try {
+        await sendWebPushJson(
+          { endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } },
+          {
+            kind: "kindrail.push.daily",
+            v: 1,
+            dateUtc,
+            title: "KINDRAIL",
+            body: "Daily rewards and battle are ready.",
+            atMs: Date.now()
+          }
+        );
+        store.mutate((s) => {
+          s.caps[k] = 1;
+        });
+        sent += 1;
+      } catch (e: unknown) {
+        const code =
+          typeof e === "object" && e !== null && "statusCode" in e
+            ? Number((e as { statusCode: number }).statusCode)
+            : 0;
+        if (code === 410) {
+          store.mutate((s) => {
+            const b = s.pushWebSubs[userId];
+            if (!b?.[row.subId]) return;
+            delete b[row.subId];
+            if (Object.keys(b).length === 0) delete s.pushWebSubs[userId];
+            delete s.caps[k];
+          });
+          removed += 1;
+        } else {
+          failed += 1;
+        }
+      }
+    }
+  }
+
+  return KrInternalPushDailyResponse.parse({
+    v: 1,
+    ok: true,
+    dateUtc,
+    dryRun,
+    scanned,
+    sent,
+    skipped,
+    failed,
+    removed
+  });
 });
 
 app.post("/admin/reload", async (req, reply) => {

@@ -810,8 +810,11 @@ export function App() {
         <div className="card" id="kr-section-push">
           <h2>Push (daily reminder)</h2>
           <div className="sub" style={{ marginBottom: 10 }}>
-            Web Push MVP: subscribe stores an endpoint on the gateway. Operators send with{" "}
-            <span className="mono">POST /admin/push/test</span> + <span className="mono">x-kr-admin-token</span>.
+            Web Push MVP: subscribe stores an endpoint on the gateway. Operators:{" "}
+            <span className="mono">POST /admin/push/test</span> + <span className="mono">x-kr-admin-token</span>, or
+            scheduled <span className="mono">POST /internal/push/daily</span> +{" "}
+            <span className="mono">x-kr-internal-cron-secret</span> (<span className="mono">KR_INTERNAL_CRON_SECRET</span>
+            ).
           </div>
           <div className="btnbar">
             <button className="btn primary" onClick={() => void registerWebPush()} disabled={!userId || pushBusy}>

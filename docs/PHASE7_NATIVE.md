@@ -84,5 +84,22 @@ pnpm --filter @kindrail/companion-mobile exec cap open android
 
 **Client:** companion-web → “Push (daily reminder)” kartı → “Enable push on this device”.
 
-Cron / günlük job için bir sonraki adım: imzalı internal job veya queue ile `POST /admin/push/test` benzeri “daily” endpoint (rate + idempotency anahtarı ile).
+### 7.5 Günlük push (cron)
+
+`POST /internal/push/daily` — header **`x-kr-internal-cron-secret`** = `KR_INTERNAL_CRON_SECRET` (SHA-256 üzerinden `timingSafeEqual` ile karşılaştırma).
+
+- **`KR_INTERNAL_CRON_SECRET`** yoksa: `503 CRON_DISABLED`
+- Gövde (opsiyonel): `{ "v": 1, "dateUtc": "2026-04-30", "dryRun": true, "limit": 2000 }`
+- **Idempotency:** her `subscriptionId` (`subId`) + `dateUtc` için en fazla **1** başarılı gönderim (`caps` anahtarı `pushDailySub:${subId}:${dateUtc}`)
+- **410 Gone:** abonelik store’dan silinir (`removed` sayacı)
+- **Rate limit:** `/internal/*` global IP/user limiter’dan **muaf** (cron güvenilirliği)
+
+Örnek:
+
+```bash
+curl -sS -X POST "http://localhost:8787/internal/push/daily" \
+  -H "content-type: application/json" \
+  -H "x-kr-internal-cron-secret: $KR_INTERNAL_CRON_SECRET" \
+  -d '{"v":1,"dryRun":true}'
+```
 

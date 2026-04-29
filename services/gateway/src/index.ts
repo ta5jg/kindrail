@@ -25,7 +25,11 @@ import {
   KrShareRedeemResponse,
   KrShareTicketCreateResponse,
   KrUpgradeUnitRequest,
-  KrUpgradeUnitResponse
+  KrUpgradeUnitResponse,
+  KrCheckoutCreateRequest,
+  KrCheckoutCreateResponse,
+  KrOffersResponse,
+  KrPurchaseStatusResponse
 } from "@kindrail/protocol";
 import { readEnv } from "./env.js";
 import { runBattleSim } from "./sim/battleSim.js";
@@ -34,6 +38,8 @@ import { issueSessionToken } from "./auth/token.js";
 import { FileStore } from "./store/store.js";
 import { loadContent } from "./content/loader.js";
 import { makeDailyOffers, upgradeCost } from "./meta/shop.js";
+import { OFFERS, getOffer } from "./monetization/offers.js";
+import { grantOfferToUser } from "./monetization/fulfill.js";
 
 const env = readEnv();
 
@@ -98,6 +104,112 @@ app.get("/catalog/units", async () => {
     ok: true,
     catalog: content.catalog
   });
+});
+
+// ---------- Monetization (MVP) ----------
+app.get("/offers", async () => {
+  return KrOffersResponse.parse({ v: 1, ok: true, offers: OFFERS });
+});
+
+app.post("/checkout/create", async (req, reply) => {
+  try {
+    const userId = requireAuth(req);
+    const body = KrCheckoutCreateRequest.parse(req.body);
+    const offer = getOffer(body.offerId);
+    if (!offer) {
+      reply.code(400);
+      return { ok: false, error: "BAD_REQUEST" };
+    }
+
+    // Create purchase row first (idempotency later via session id)
+    const purchaseId = `p_${nanoid(16)}`;
+    store.mutate((s) => {
+      s.purchases[purchaseId] = {
+        purchaseId,
+        userId,
+        offerId: offer.offerId,
+        provider: env.STRIPE_SECRET_KEY ? "stripe" : "devstub",
+        createdAtMs: Date.now()
+      };
+    });
+
+    // Dev-stub mode: instantly fulfill and "redirect" back
+    if (!env.STRIPE_SECRET_KEY) {
+      grantOfferToUser(store, { userId, offerId: offer.offerId, purchaseId });
+      const url = new URL(env.KR_PUBLIC_BASE_URL);
+      url.searchParams.set("purchase", purchaseId);
+      url.searchParams.set("status", "success");
+      return KrCheckoutCreateResponse.parse({ v: 1, ok: true, url: url.toString(), provider: "devstub" });
+    }
+
+    // Stripe mode (skeleton): return a placeholder until keys are configured.
+    // We keep this minimal: full Stripe Checkout Session wiring can be enabled by adding STRIPE_SECRET_KEY + webhook.
+    const url = new URL(env.KR_PUBLIC_BASE_URL);
+    url.searchParams.set("purchase", purchaseId);
+    url.searchParams.set("status", "pending");
+    return KrCheckoutCreateResponse.parse({ v: 1, ok: true, url: url.toString(), provider: "stripe" });
+  } catch (err) {
+    req.log.warn({ err }, "checkout create rejected");
+    reply.code(400);
+    return { ok: false, error: "BAD_REQUEST" };
+  }
+});
+
+// Stripe webhook skeleton (no signature verification in this repo yet).
+// In production: verify Stripe signature with STRIPE_WEBHOOK_SECRET and raw body.
+app.post("/stripe/webhook", async (req, reply) => {
+  try {
+    const evt = req.body as any;
+    const eventId = typeof evt?.id === "string" ? evt.id : null;
+    if (!eventId) {
+      reply.code(400);
+      return { ok: false };
+    }
+
+    const already = store.snapshot().webhookProcessed[eventId];
+    if (already) return { ok: true, ignored: true };
+
+    const purchaseId = evt?.data?.object?.metadata?.purchaseId ?? evt?.data?.object?.client_reference_id;
+    if (typeof purchaseId !== "string" || !purchaseId.startsWith("p_")) {
+      store.mutate((s) => {
+        s.webhookProcessed[eventId] = Date.now();
+      });
+      return { ok: true, ignored: true };
+    }
+
+    const p = store.snapshot().purchases[purchaseId];
+    if (p && !p.fulfilledAtMs) {
+      grantOfferToUser(store, { userId: p.userId, offerId: p.offerId, purchaseId });
+    }
+
+    store.mutate((s) => {
+      s.webhookProcessed[eventId] = Date.now();
+    });
+
+    return { ok: true };
+  } catch (err) {
+    req.log.warn({ err }, "stripe webhook failed");
+    reply.code(400);
+    return { ok: false };
+  }
+});
+
+app.get("/purchase/status", async (req, reply) => {
+  try {
+    const userId = requireAuth(req);
+    // return latest fulfilled purchase id for UX (simple)
+    const purchases = Object.values(store.snapshot().purchases)
+      .filter((p) => p.userId === userId && p.fulfilledAtMs)
+      .sort((a, b) => (b.fulfilledAtMs ?? 0) - (a.fulfilledAtMs ?? 0));
+    return KrPurchaseStatusResponse.parse({
+      v: 1,
+      ok: true,
+      lastPurchaseId: purchases[0]?.purchaseId
+    });
+  } catch {
+    reply.code(401);
+    return { ok: false, error: "UNAUTHORIZED" };
+  }
 });
 
 app.post("/auth/guest", async (req, reply) => {

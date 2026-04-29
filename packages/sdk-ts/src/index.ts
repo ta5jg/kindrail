@@ -24,7 +24,11 @@ import {
   KrReferralStatusResponse,
   KrShareRedeemRequest,
   KrShareRedeemResponse,
-  KrShareTicketCreateResponse
+  KrShareTicketCreateResponse,
+  KrCheckoutCreateRequest,
+  KrCheckoutCreateResponse,
+  KrOffersResponse,
+  KrPurchaseStatusResponse
 } from "@kindrail/protocol";
 
 export type KindrailSdkOptions = {
@@ -278,6 +282,41 @@ export class KindrailSdk {
     if (!res.ok) throw new Error(`shareRedeem failed: ${res.status}`);
     const json = await res.json();
     return KrShareRedeemResponse.parse(json);
+  }
+
+  async offers(): Promise<KrOffersResponse> {
+    const res = await this.fetchImpl(`${this.baseUrl}/offers`, {
+      method: "GET",
+      headers: { accept: "application/json" }
+    });
+    if (!res.ok) throw new Error(`offers failed: ${res.status}`);
+    const json = await res.json();
+    return KrOffersResponse.parse(json);
+  }
+
+  async checkoutCreate(req: KrCheckoutCreateRequest): Promise<KrCheckoutCreateResponse> {
+    const res = await this.fetchImpl(`${this.baseUrl}/checkout/create`, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        ...this.authHeaders()
+      },
+      body: JSON.stringify(req)
+    });
+    if (!res.ok) throw new Error(`checkoutCreate failed: ${res.status}`);
+    const json = await res.json();
+    return KrCheckoutCreateResponse.parse(json);
+  }
+
+  async purchaseStatus(): Promise<KrPurchaseStatusResponse> {
+    const res = await this.fetchImpl(`${this.baseUrl}/purchase/status`, {
+      method: "GET",
+      headers: { accept: "application/json", ...this.authHeaders() }
+    });
+    if (!res.ok) throw new Error(`purchaseStatus failed: ${res.status}`);
+    const json = await res.json();
+    return KrPurchaseStatusResponse.parse(json);
   }
 }
 

@@ -42,6 +42,9 @@ export function App() {
   const [leaderboardTop, setLeaderboardTop] = useState<Array<{ userId: string; score: number }>>([]);
   const [leaderboardMe, setLeaderboardMe] = useState<{ rank?: number; total: number; score?: number } | null>(null);
   const [shareLink, setShareLink] = useState<string>("");
+  const [offers, setOffers] = useState<Array<{ offerId: string; name: string; priceCents: number; currency: string }>>(
+    []
+  );
 
   const [seed, setSeed] = useState<string>(() => {
     const url = new URL(window.location.href);
@@ -121,6 +124,15 @@ export function App() {
   }, [sdk]);
 
   useEffect(() => {
+    sdk
+      .offers()
+      .then((o) => {
+        setOffers(o.offers.map((x) => ({ offerId: x.offerId, name: x.name, priceCents: x.priceCents, currency: x.currency })));
+      })
+      .catch(() => {});
+  }, [sdk]);
+
+  useEffect(() => {
     // Referral accept via URL: ?ref=<userId>
     const url = new URL(window.location.href);
     const ref = url.searchParams.get("ref");
@@ -134,6 +146,19 @@ export function App() {
       })
       .catch(() => {});
   }, [sdk, userId]);
+
+  useEffect(() => {
+    // After checkout redirect (devstub/stripe), refresh balances
+    const url = new URL(window.location.href);
+    const status = url.searchParams.get("status");
+    const purchase = url.searchParams.get("purchase");
+    if (!status && !purchase) return;
+    url.searchParams.delete("status");
+    url.searchParams.delete("purchase");
+    window.history.replaceState({}, "", url.toString());
+    refreshMeta();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   function syncUrlFromReq(req: KrBattleSimRequest) {
     const url = new URL(window.location.href);
@@ -284,6 +309,16 @@ export function App() {
       const link = url.toString();
       setShareLink(link);
       await copyToClipboard(link);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "unknown error";
+      setState({ kind: "err", message: msg });
+    }
+  }
+
+  async function buyOffer(offerId: string) {
+    try {
+      const res = await sdk.checkoutCreate({ v: 1, offerId });
+      window.location.href = res.url;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "unknown error";
       setState({ kind: "err", message: msg });
@@ -567,6 +602,52 @@ export function App() {
                 ))}
             </div>
           )}
+        </div>
+      </div>
+
+      <div className="grid" style={{ marginTop: 14 }}>
+        <div className="card">
+          <h2>Monetization (MVP)</h2>
+          {offers.length === 0 ? (
+            <div className="log">Loading offers…</div>
+          ) : (
+            <div className="row">
+              {offers.map((o) => (
+                <div key={o.offerId} className="pill">
+                  <strong>{o.name}</strong>
+                  <span className="mono">
+                    {(o.priceCents / 100).toFixed(2)} {o.currency}
+                  </span>
+                  <button className="btn primary" onClick={() => buyOffer(o.offerId)} disabled={!userId}>
+                    Buy
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="sub" style={{ marginTop: 10 }}>
+            Dev note: without `STRIPE_SECRET_KEY`, purchases are fulfilled instantly (devstub).
+          </div>
+        </div>
+        <div className="card">
+          <h2>Purchase status</h2>
+          <div className="btnbar">
+            <button
+              className="btn"
+              onClick={async () => {
+                try {
+                  await sdk.purchaseStatus();
+                  await refreshMeta();
+                } catch {
+                  // ignore
+                }
+              }}
+              disabled={!userId}
+            >
+              Refresh purchase status
+            </button>
+          </div>
+          <div className="log">Balances update immediately on success.</div>
         </div>
       </div>
 

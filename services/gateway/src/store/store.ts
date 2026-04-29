@@ -52,6 +52,16 @@ export type ShareTicketRow = {
   redeemedAtMs?: number;
 };
 
+export type PurchaseRow = {
+  purchaseId: string; // internal
+  userId: string;
+  offerId: string;
+  provider: "stripe" | "devstub";
+  providerSessionId?: string;
+  createdAtMs: number;
+  fulfilledAtMs?: number;
+};
+
 export type StoreState = {
   users: Record<string, UserRow>; // userId -> row
   deviceToUser: Record<string, string>; // deviceId -> userId
@@ -62,6 +72,8 @@ export type StoreState = {
   referrals: Record<string, ReferralEdgeRow>; // newUserId -> edge
   shareTickets: Record<string, ShareTicketRow>; // ticketId -> row
   caps: Record<string, number>; // generic counters, key `${kind}:${userId}:${dateUtc}`
+  purchases: Record<string, PurchaseRow>; // purchaseId -> row
+  webhookProcessed: Record<string, number>; // providerEventId -> processedAtMs
 };
 
 const DEFAULT_STATE: StoreState = {
@@ -74,6 +86,9 @@ const DEFAULT_STATE: StoreState = {
   referrals: {},
   shareTickets: {},
   caps: {}
+  ,
+  purchases: {},
+  webhookProcessed: {}
 };
 
 export class FileStore {
@@ -99,7 +114,9 @@ export class FileStore {
         leaderboard: parsed.leaderboard ?? {},
         referrals: parsed.referrals ?? {},
         shareTickets: parsed.shareTickets ?? {},
-        caps: parsed.caps ?? {}
+        caps: parsed.caps ?? {},
+        purchases: parsed.purchases ?? {},
+        webhookProcessed: parsed.webhookProcessed ?? {}
       } as StoreState;
     } catch {
       this.state = { ...DEFAULT_STATE };

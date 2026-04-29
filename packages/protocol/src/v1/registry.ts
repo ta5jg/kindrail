@@ -20,6 +20,12 @@ import {
   KrShareRedeemResponse,
   KrShareTicketCreateResponse
 } from "./growth.js";
+import {
+  KrCheckoutCreateRequest,
+  KrCheckoutCreateResponse,
+  KrOffersResponse,
+  KrPurchaseStatusResponse
+} from "./monetization.js";
 
 /**
  * Central schema registry for:
@@ -54,6 +60,10 @@ export const KrV1Schemas = {
   KrReferralStatusResponse,
   KrShareTicketCreateResponse,
   KrShareRedeemRequest,
-  KrShareRedeemResponse
+  KrShareRedeemResponse,
+  KrOffersResponse,
+  KrCheckoutCreateRequest,
+  KrCheckoutCreateResponse,
+  KrPurchaseStatusResponse
 } satisfies Record<string, z.ZodTypeAny>;
 

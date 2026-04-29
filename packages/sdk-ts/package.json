@@ -1,0 +1,28 @@
+{
+  "name": "@kindrail/sdk-ts",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "tsc -w",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@kindrail/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.30.0",
+    "@types/node": "^24.3.0",
+    "eslint": "^9.30.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.41.0"
+  }
+}
+

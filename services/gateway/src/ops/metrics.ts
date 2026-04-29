@@ -4,6 +4,11 @@ export type MetricsSnapshot = {
   reqByRoute: Record<string, number>;
   reqByStatus: Record<string, number>;
   rateLimited: number;
+  pushDailyScanned: number;
+  pushDailySent: number;
+  pushDailySkipped: number;
+  pushDailyFailed: number;
+  pushDailyRemoved: number;
 };
 
 export class Metrics {
@@ -12,6 +17,25 @@ export class Metrics {
   reqByRoute: Record<string, number> = {};
   reqByStatus: Record<string, number> = {};
   rateLimited = 0;
+  pushDailyScanned = 0;
+  pushDailySent = 0;
+  pushDailySkipped = 0;
+  pushDailyFailed = 0;
+  pushDailyRemoved = 0;
+
+  recordPushDailyRun(o: {
+    scanned: number;
+    sent: number;
+    skipped: number;
+    failed: number;
+    removed: number;
+  }) {
+    this.pushDailyScanned += o.scanned | 0;
+    this.pushDailySent += o.sent | 0;
+    this.pushDailySkipped += o.skipped | 0;
+    this.pushDailyFailed += o.failed | 0;
+    this.pushDailyRemoved += o.removed | 0;
+  }
 
   incRoute(route: string) {
     this.reqTotal += 1;
@@ -29,7 +53,12 @@ export class Metrics {
       reqTotal: this.reqTotal,
       reqByRoute: { ...this.reqByRoute },
       reqByStatus: { ...this.reqByStatus },
-      rateLimited: this.rateLimited
+      rateLimited: this.rateLimited,
+      pushDailyScanned: this.pushDailyScanned,
+      pushDailySent: this.pushDailySent,
+      pushDailySkipped: this.pushDailySkipped,
+      pushDailyFailed: this.pushDailyFailed,
+      pushDailyRemoved: this.pushDailyRemoved
     };
   }
 
@@ -59,6 +88,26 @@ export class Metrics {
     lines.push(`# HELP kr_rate_limited_total Rate limited requests`);
     lines.push(`# TYPE kr_rate_limited_total counter`);
     lines.push(`kr_rate_limited_total{service="${service}"} ${this.rateLimited}`);
+
+    lines.push(`# HELP kr_push_daily_scanned_total Subscriptions examined by internal daily push job`);
+    lines.push(`# TYPE kr_push_daily_scanned_total counter`);
+    lines.push(`kr_push_daily_scanned_total{service="${service}"} ${this.pushDailyScanned}`);
+
+    lines.push(`# HELP kr_push_daily_sent_total Successful web push sends from daily job`);
+    lines.push(`# TYPE kr_push_daily_sent_total counter`);
+    lines.push(`kr_push_daily_sent_total{service="${service}"} ${this.pushDailySent}`);
+
+    lines.push(`# HELP kr_push_daily_skipped_total Skipped (already sent today or dry-run) in daily job`);
+    lines.push(`# TYPE kr_push_daily_skipped_total counter`);
+    lines.push(`kr_push_daily_skipped_total{service="${service}"} ${this.pushDailySkipped}`);
+
+    lines.push(`# HELP kr_push_daily_failed_total Failed sends (non-410) in daily job`);
+    lines.push(`# TYPE kr_push_daily_failed_total counter`);
+    lines.push(`kr_push_daily_failed_total{service="${service}"} ${this.pushDailyFailed}`);
+
+    lines.push(`# HELP kr_push_daily_removed_total Subscriptions removed after 410 in daily job`);
+    lines.push(`# TYPE kr_push_daily_removed_total counter`);
+    lines.push(`kr_push_daily_removed_total{service="${service}"} ${this.pushDailyRemoved}`);
 
     return lines.join("\n") + "\n";
   }

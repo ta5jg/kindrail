@@ -103,3 +103,22 @@ curl -sS -X POST "http://localhost:8787/internal/push/daily" \
   -d '{"v":1,"dryRun":true}'
 ```
 
+### GitHub Actions
+
+Workflow: `.github/workflows/kindrail-push-daily.yml`
+
+Repository **Secrets**:
+- `KINDRAIL_GATEWAY_BASE_URL` — canlı gateway kökü (sonunda `/` yok), örn. `https://api.kindrail.example`
+- `KINDRAIL_INTERNAL_CRON_SECRET` — sunucudaki `KR_INTERNAL_CRON_SECRET` ile aynı
+
+Manuel tetik: Actions → **KINDRAIL daily web push** → **Run workflow** → isteğe bağlı `dry_run`.
+
+### Prometheus
+
+`/metrics` içinde günlük job kümülatif sayaçları:
+- `kr_push_daily_scanned_total`
+- `kr_push_daily_sent_total`
+- `kr_push_daily_skipped_total`
+- `kr_push_daily_failed_total`
+- `kr_push_daily_removed_total`
+

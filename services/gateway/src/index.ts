@@ -372,6 +372,8 @@ app.post("/internal/push/daily", async (req, reply) => {
     }
   }
 
+  metrics.recordPushDailyRun({ scanned, sent, skipped, failed, removed });
+
   return KrInternalPushDailyResponse.parse({
     v: 1,
     ok: true,

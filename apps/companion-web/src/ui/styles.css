@@ -47,6 +47,106 @@ textarea {
   padding: 28px 18px 64px;
 }
 
+.wrapGate {
+  min-height: calc(100vh - 56px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: calc(24px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  padding-left: calc(18px + env(safe-area-inset-left, 0px));
+  padding-right: calc(18px + env(safe-area-inset-right, 0px));
+}
+
+.gameGate {
+  width: 100%;
+  max-width: 420px;
+}
+
+.gameGateCard {
+  padding: 28px 22px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.18));
+  text-align: center;
+}
+
+.gameGateBrand {
+  font-size: 26px;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.gameGateTagline {
+  margin: 0 0 22px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.gameGateCta {
+  width: 100%;
+  padding: 14px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  background: linear-gradient(90deg, rgba(124, 92, 255, 0.9), rgba(124, 92, 255, 0.55));
+  border: 1px solid rgba(124, 92, 255, 0.6);
+  border-radius: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.gameGateCta:hover {
+  filter: brightness(1.06);
+}
+
+.gameGateStatus {
+  margin: 18px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.gameGateStatusOk strong {
+  color: var(--good);
+}
+
+.gameGateStatusBad strong {
+  color: var(--bad);
+}
+
+.gameGateStatusMeta {
+  opacity: 0.85;
+}
+
+.gameGateHint {
+  margin: 14px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.85;
+}
+
+.gameGateMeta {
+  margin: 12px 0 0;
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.72;
+  line-height: 1.45;
+}
+
+.btnGhost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.btnGhost:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .top {
   display: flex;
   gap: 14px;

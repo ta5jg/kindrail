@@ -12,6 +12,7 @@ import { buildBattleRequest, type EnemyPreset } from "./deckBuilder";
 import { readInitialSquadFromUrl } from "./initialSquad";
 import { isOnboardingDone, setOnboardingDone } from "./onboarding";
 import { primeAudio, sfxDeath, sfxHit, sfxWin } from "./audio";
+import { HomeGate } from "./HomeGate";
 
 type LoadState =
   | { kind: "idle" }
@@ -35,8 +36,19 @@ function summarize(result: KrBattleSimResult): string {
   return `Outcome: ${result.outcome.toUpperCase()} | ticks=${result.ticks} | alive: A=${aAlive} B=${bAlive}`;
 }
 
+function gatewayBaseUrl(): string {
+  const raw = import.meta.env.VITE_GATEWAY_URL?.trim();
+  if (raw && raw.length > 0) return raw.replace(/\/+$/, "");
+  if (typeof window !== "undefined" && window.location?.hostname) {
+    const proto = window.location.protocol === "https:" ? "https:" : "http:";
+    return `${proto}//${window.location.hostname}:8787`;
+  }
+  return "http://127.0.0.1:8787";
+}
+
 export function App() {
-  const sdk = useMemo(() => new KindrailSdk({ baseUrl: "http://localhost:8787" }), []);
+  const gatewayUrl = useMemo(() => gatewayBaseUrl(), []);
+  const sdk = useMemo(() => new KindrailSdk({ baseUrl: gatewayUrl }), [gatewayUrl]);
 
   const [gatewayOk, setGatewayOk] = useState<boolean | null>(null);
   const [gatewayInfo, setGatewayInfo] = useState<string>("");
@@ -61,6 +73,32 @@ export function App() {
     []
   );
   const autoRunConsumed = useRef(false);
+
+  const persistShellPhase = useCallback((phase: "gate" | "play") => {
+    try {
+      if (phase === "play") sessionStorage.setItem("kindrail_shell_phase", "play");
+      else sessionStorage.removeItem("kindrail_shell_phase");
+    } catch {
+      /* private mode / quota */
+    }
+  }, []);
+
+  /** R1.1 — gate vs dashboard unless URL or saved session requests play. */
+  const [gamePhase, setGamePhase] = useState<"gate" | "play">(() => {
+    if (typeof window === "undefined") return "gate";
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("q")) return "play";
+    if (parseRunFlag(url)) return "play";
+    if (parseView(url)) return "play";
+    try {
+      if (sessionStorage.getItem("kindrail_shell_phase") === "play") return "play";
+    } catch {
+      /* ignore */
+    }
+    return "gate";
+  });
+
+  const runtimeEnvLabel = import.meta.env.DEV ? "Development build" : "Production build";
 
   const [seed, setSeed] = useState<string>(() => {
     const url = new URL(window.location.href);
@@ -578,6 +616,22 @@ export function App() {
     );
   }
 
+  if (gamePhase === "gate") {
+    return (
+      <div className="wrapGate">
+        <HomeGate
+          gatewayOk={gatewayOk}
+          gatewayInfo={gatewayInfo}
+          runtimeEnvLabel={runtimeEnvLabel}
+          onEnterBattle={() => {
+            persistShellPhase("play");
+            setGamePhase("play");
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="wrap">
       <div className="top">
@@ -588,6 +642,16 @@ export function App() {
           </div>
         </div>
         <div className="row">
+          <button
+            type="button"
+            className="btn btnGhost"
+            onClick={() => {
+              persistShellPhase("gate");
+              setGamePhase("gate");
+            }}
+          >
+            Home
+          </button>
           <div className="pill">
             <strong className={gatewayOk ? "ok" : gatewayOk === false ? "bad" : ""}>
               {gatewayOk === null ? "…" : gatewayOk ? "OK" : "DOWN"}

@@ -3,12 +3,31 @@
 Fast-growing, session-based **async auto-battler + collection meta**.
 
 This repo is a monorepo:
-- `services/gateway`: TypeScript gateway for USDTgVerse / Q-Verse integrations
+- `services/gateway`: TypeScript gateway (game API, progression, shop)
 - `packages/protocol`: SSOT schemas + codegen-friendly types
 - `packages/sdk-ts`: TypeScript SDK used by web/mobile companion apps
 - `apps/companion-web`: web-first companion client (shareable battle replays)
-- `apps/companion-mobile`: (next) mobile companion
-- `apps/game-unity`: (next) Unity client (WebGL/iOS/Android)
+- `apps/companion-mobile`: Capacitor shells (**iOS + Android**) wrapping `companion-web` (`pnpm run mobile:sync`)
+- `apps/game-unity`: (future) Unity client (WebGL/iOS/Android)
+
+Release roadmap (**SSOT**): [`docs/KINDRAIL_RELEASE_ROADMAP.md`](docs/KINDRAIL_RELEASE_ROADMAP.md).
+
+### Mobile (Capacitor — R1)
+
+From repo root after `pnpm i`:
+
+```bash
+pnpm run mobile:sync
+```
+
+Requires native projects added once — see [`apps/companion-mobile/README.md`](apps/companion-mobile/README.md). Then:
+
+```bash
+pnpm --filter @kindrail/companion-mobile exec cap open ios
+pnpm --filter @kindrail/companion-mobile exec cap open android
+```
+
+CI runs **companion-web build + gateway typecheck** on `main` and PRs (`.github/workflows/kindrail-ci.yml`). TestFlight / Play Internal uploads are done locally after sync.
 
 ### Quick start
 
@@ -19,19 +38,20 @@ corepack enable
 pnpm i
 ```
 
-2) Run gateway
+2) Run gateway (terminal A)
 
 ```bash
 pnpm dev
 ```
 
-3) Run web client
+3) Run web client (terminal B)
 
 ```bash
-pnpm --filter @kindrail/companion-web dev
+pnpm run dev:companion
 ```
 
 4) Open
 - Web: `http://localhost:5173`
 - Gateway health: `GET http://localhost:8787/health`
 
+Optional: `VITE_GATEWAY_URL` in `apps/companion-web` env overrides default `hostname:8787` (useful behind proxies).

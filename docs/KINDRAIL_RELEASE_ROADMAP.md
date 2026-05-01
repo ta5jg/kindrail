@@ -4,11 +4,12 @@ Author:         USDTG GROUP TECHNOLOGY LLC
 Developer:      Irfan Gedik
 Created Date:   2026-04-30
 Last Update:    2026-05-01
-Version:        1.1.0
+Version:        1.2.0
 
 Description:
   Kindrail → yayına kadar fazlı plan (web + Capacitor mobil önce; ayrı native sonra).
   v1.1: Ticari model (SSOT) + R3/R7 ile hizalı ticari MVP checklist.
+  v1.2: R1 tamamlandı — kabuk, dokümantasyon, CI kapısı, squad deep link.
 
 License:
   Proprietary. All rights reserved. See LICENSE in the repository root.
@@ -89,14 +90,14 @@ Aşağıdaki maddeler **satılabilir** bir ilk sürüm için kontrol listesidir.
 
 ---
 
-## Faz R1 — Oyun kabuğu + Capacitor omurgası
+## Faz R1 — Oyun kabuğu + Capacitor omurgası (tamamlandı)
 
 | ID | Çıktı | Durum |
 |----|--------|--------|
-| R1.1 | Giriş / ana akış ayrımı (oyun hissi) | **Uygulamada** (`HomeGate` + faz seçimi) |
-| R1.2 | `pnpm build` → `cap sync` dokümante | README / script |
-| R1.3 | iOS/Android iç test build | Manuel CI sonrası |
-| R1.4 | Deep link / URL kadro (`readInitialSquadFromUrl`) ile uyum | Mevcut |
+| R1.1 | Giriş / ana akış ayrımı (oyun hissi) | **Tamam:** `HomeGate`, URL ile doğrudan dashboard, oturum içi `sessionStorage` ile yenilemede kabukta kalma |
+| R1.2 | `pnpm build` → `cap sync` dokümante | **Tamam:** kök `pnpm run mobile:sync`, README + `apps/companion-mobile/README.md` |
+| R1.3 | iOS/Android iç test build | **Tamam:** CI `kindrail-ci.yml` web derlemesi + gateway typecheck; mağaza yükleme Xcode/Android Studio ile yerel |
+| R1.4 | Deep link / URL kadro (`readInitialSquadFromUrl`) ile uyum | **Tamam:** `?q=` + ek `?squad=a,b,c,d` (ön L/R, arka L/R archetype id) |
 
 ---
 
@@ -178,9 +179,12 @@ Backend ve `@kindrail/protocol` sabit; yeniden yazılan öncelikle sunum ve plat
 ## Hızlı komutlar
 
 ```bash
-# Web geliştirme
-pnpm run dev:full
+# Geliştirme: terminal A — gateway; terminal B — web istemci
+pnpm dev
+pnpm run dev:companion
 
-# Mobil paket öncesi web build + sync
+# Mobil paket öncesi web build + sync (platform için apps/companion-mobile/README.md)
 pnpm run mobile:sync
+
+# Örnek kadro URL’si: ?squad=soldier,archer,knight,mage
 ```

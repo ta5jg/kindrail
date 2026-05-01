@@ -2,34 +2,26 @@
 
 This wraps `apps/companion-web` into installable iOS/Android shells via Capacitor.
 
-### Local workflow
+### Repo-root shortcut (R1)
 
-1) Install deps
-
-```bash
-pnpm i
-```
-
-2) Build the web app
+After `pnpm i` from monorepo root:
 
 ```bash
-pnpm --filter @kindrail/companion-mobile build:web
+pnpm run mobile:sync
 ```
 
-3) Add platforms (one-time)
+Runs `companion-web` production build then `cap sync`.
+
+First-time only, add native platforms (often not committed in minimal clones):
 
 ```bash
 pnpm --filter @kindrail/companion-mobile exec cap add ios
 pnpm --filter @kindrail/companion-mobile exec cap add android
 ```
 
-4) Sync web assets into native projects
+Then run `pnpm run mobile:sync` again from root (or `pnpm --filter @kindrail/companion-mobile exec cap sync`).
 
-```bash
-pnpm --filter @kindrail/companion-mobile exec cap sync
-```
-
-5) Open in Xcode / Android Studio
+Open Xcode / Android Studio:
 
 ```bash
 pnpm --filter @kindrail/companion-mobile exec cap open ios
@@ -38,6 +30,7 @@ pnpm --filter @kindrail/companion-mobile exec cap open android
 
 ### Deep links (HTTPS)
 
-Use the same query params as the web app (e.g. `?ticket=…`, `?ref=…`, `?view=leaderboard`, `?run=1&q=…`).
-`@capacitor/app` merges `appUrlOpen` query params into the WebView URL so existing companion-web handlers run.
+Same query params as the web app (e.g. `?ticket=…`, `?ref=…`, `?view=leaderboard`, `?run=1&q=…`).
+Compact squad preload: `?squad=soldier,archer,knight,mage` (front L, front R, back L, back R archetype ids).
 
+`@capacitor/app` merges `appUrlOpen` query params into the WebView URL so existing `companion-web` handlers run.

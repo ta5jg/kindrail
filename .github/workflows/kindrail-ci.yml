@@ -1,0 +1,42 @@
+# =============================================================================
+# R1.3 — CI gate: companion-web production build + gateway typecheck.
+# Native TestFlight / Play uploads remain local after cap sync.
+# =============================================================================
+
+name: KINDRAIL CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: kindrail-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  companion-web-and-gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build protocol + sdk-ts (workspace consumers)
+        run: pnpm --filter @kindrail/protocol build && pnpm --filter @kindrail/sdk-ts build
+
+      - name: Build companion-web (Capacitor web bundle)
+        run: pnpm --filter @kindrail/companion-web build
+
+      - name: Gateway typecheck
+        run: pnpm --filter @kindrail/gateway typecheck

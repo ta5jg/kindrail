@@ -1,4 +1,23 @@
+<!-- =============================================================================
+File:           docs/ROADMAP.md
+Author:         USDTG GROUP TECHNOLOGY LLC
+Developer:      Irfan Gedik
+Created Date:   2026-04-30
+Last Update:    2026-05-01
+Version:        0.3.1
+
+Description:
+  
+
+License:
+  Proprietary. All rights reserved. See LICENSE in the repository root.
+============================================================================= -->
+
 ## KINDRAIL Roadmap (v0)
+
+Release phases (web + Capacitor → store): **`docs/KINDRAIL_RELEASE_ROADMAP.md`**.
+
+**Ticari model ve satılabilir MVP checklist** (Battle Pass + kozmetik IAP + opsiyonel rewarded ads + bundle; şans/kumar yok): aynı dosyada *Ticari model (SSOT)* ve *Ticari MVP checklist* bölümleri.
 
 Bu doküman “KINDRAIL’i hızlı büyüyen ve para kazanan bir ürüne” dönüştürmek için fazları, alt kırılımları ve teknik adımları tanımlar.
 
@@ -202,7 +221,8 @@ See: `docs/PHASE7_NATIVE.md`
 
 ## Faz 8–14 — Full game roadmap (v1)
 
-See: `docs/ROADMAP_V1_FULL.md`
+See: `docs/ROADMAP_V1_FULL.md`  
+**Faz 13 (prod deploy + Postgres + backup + analytics ingest):** `docs/PHASE13_PRODUCTION.md`
 
 ---
 

@@ -60,8 +60,15 @@ export function buildReplayFrames(req: KrBattleSimRequest, result: KrBattleSimRe
     while (evi < evSorted.length && evSorted[evi].t === t) {
       const e = evSorted[evi++];
       if (e.kind === "hit" && e.dst && typeof e.dmg === "number") {
+        const dmgRaw = e.dmg | 0;
+        if (dmgRaw <= 0) {
+          const line = `${e.src ?? "?"} → ${e.dst}  MISS`;
+          log.push(line);
+          uiEvents.push({ kind: "hit", src: e.src, dst: e.dst, text: line, crit: Boolean(e.crit) });
+          continue;
+        }
         const cur = hp[e.dst] ?? 0;
-        const next = Math.max(0, (cur - (e.dmg | 0)) | 0);
+        const next = Math.max(0, (cur - dmgRaw) | 0);
         hp[e.dst] = next;
         flashIds.push(e.dst);
         const line = `${e.src ?? "?"} → ${e.dst}  dmg=${e.dmg}${e.crit ? " CRIT" : ""}`;

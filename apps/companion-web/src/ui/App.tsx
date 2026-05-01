@@ -980,11 +980,10 @@ export function App() {
       acc += now - last;
       last = now;
       if (acc >= msPerTick) {
-        const steps = Math.floor(acc / msPerTick);
-        acc -= steps * msPerTick;
+        acc -= msPerTick;
         setTick((t) => {
           const m = Math.max(0, frameLen - 1);
-          return Math.min(m, t + steps);
+          return Math.min(m, t + 1);
         });
       }
       raf = requestAnimationFrame(loop);

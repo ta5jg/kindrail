@@ -33,6 +33,7 @@ function collectStrikeEvents(events: ReplayUiEvent[], max: number): ReplayStrike
   for (const e of events) {
     if (out.length >= max) break;
     if (e.kind === "hit" && e.src) {
+      if (/\bMISS\b/i.test(e.text)) continue;
       out.push({ ...e, src: e.src, dst: e.dst });
     } else if (e.kind === "ability" && e.src && e.dst) {
       out.push({ ...e, src: e.src, dst: e.dst });

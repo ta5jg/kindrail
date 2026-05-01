@@ -16,7 +16,9 @@ const MATCH_PACING = {
   hpMul: 6,
   atkMul: 0.88,
   /** Higher threshold ⇒ fewer actions per wall-clock tick ⇒ longer fights. */
-  actThreshold: 340
+  actThreshold: 340,
+  /** Basic attack miss chance (deterministic roll). On miss, no damage / no on-hit effects. */
+  baseHitPct: 88
 } as const;
 
 function scaleUnitForMatchPacing(u: KrUnit): KrUnit {
@@ -285,6 +287,11 @@ export function runBattleSim(input: unknown): KrBattleSimResult {
       const dst = pickTarget(rng, units, enemyTeam);
       if (!dst) continue;
 
+      if (rng.nextInt(1, 100) > MATCH_PACING.baseHitPct) {
+        events.push({ t, kind: "hit", src: u.base.id, dst: dst.base.id, dmg: 0, crit: false });
+        continue;
+      }
+
       const { dmg, crit } = damageRoll(rng, u, dst);
       dealDamage(events, t, u.base.id, dst, dmg, crit);
       applyOnHitAbility(events, t, rng, u, dst);
@@ -296,8 +303,20 @@ export function runBattleSim(input: unknown): KrBattleSimResult {
 
   const aAliveEnd = aliveUnits(units, "a").length;
   const bAliveEnd = aliveUnits(units, "b").length;
-  const outcome: KrBattleOutcome =
-    aAliveEnd > 0 && bAliveEnd === 0 ? "a" : bAliveEnd > 0 && aAliveEnd === 0 ? "b" : "draw";
+  let outcome: KrBattleOutcome;
+  if (aAliveEnd > 0 && bAliveEnd === 0) outcome = "a";
+  else if (bAliveEnd > 0 && aAliveEnd === 0) outcome = "b";
+  else if (aAliveEnd === 0 && bAliveEnd === 0) outcome = "draw";
+  else {
+    const sumHp = (team: "a" | "b") =>
+      aliveUnits(units, team).reduce((s, u) => s + (u.hp | 0), 0);
+    const hpA = sumHp("a");
+    const hpB = sumHp("b");
+    if (hpA > hpB) outcome = "a";
+    else if (hpB > hpA) outcome = "b";
+    else if (aAliveEnd !== bAliveEnd) outcome = aAliveEnd > bAliveEnd ? "a" : "b";
+    else outcome = rng.nextInt(0, 1) === 0 ? "a" : "b";
+  }
 
   events.push({ t, kind: "end" });
 

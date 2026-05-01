@@ -56,4 +56,10 @@ pnpm run dev:companion
 - Web: `http://localhost:5173`
 - Gateway health: `GET http://localhost:8787/health`
 
-Optional: `VITE_GATEWAY_URL` in `apps/companion-web` env overrides default `hostname:8787` (useful behind proxies).
+### “DOWN / gateway offline”
+
+The UI talks to the **gateway on port 8787**. Run **`pnpm run dev:full`** from repo root, or **`pnpm dev`** in one terminal and **`pnpm run dev:companion`** in another.
+
+In development the browser calls **`/__kr-api`** on Vite; those requests are proxied to **`127.0.0.1:8787`**. DOWN usually means the gateway process is not running.
+
+Optional: set **`VITE_GATEWAY_URL`** in `apps/companion-web/.env.local` to override the API base (preview/production builds).

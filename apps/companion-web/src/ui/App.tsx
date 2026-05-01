@@ -39,6 +39,8 @@ function summarize(result: KrBattleSimResult): string {
 function gatewayBaseUrl(): string {
   const raw = import.meta.env.VITE_GATEWAY_URL?.trim();
   if (raw && raw.length > 0) return raw.replace(/\/+$/, "");
+  // Dev: go through Vite proxy so the UI hits same-origin `/__kr-api/*` → localhost:8787 (see vite.config.ts).
+  if (import.meta.env.DEV) return "/__kr-api";
   if (typeof window !== "undefined" && window.location?.hostname) {
     const proto = window.location.protocol === "https:" ? "https:" : "http:";
     return `${proto}//${window.location.hostname}:8787`;
@@ -128,11 +130,13 @@ export function App() {
 
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [tick, setTick] = useState<number>(0);
+  const [gatewayProbe, setGatewayProbe] = useState(0);
 
   useEffect(() => {
     const token = getToken();
     if (token) sdk.setToken(token);
 
+    setGatewayOk(null);
     sdk
       .health()
       .then((h) => {
@@ -141,9 +145,13 @@ export function App() {
       })
       .catch(() => {
         setGatewayOk(false);
-        setGatewayInfo("gateway offline");
+        const hint =
+          import.meta.env.DEV && gatewayUrl.startsWith("/")
+            ? " · start gateway: pnpm dev (repo root) or pnpm run dev:full"
+            : "";
+        setGatewayInfo(`offline · ${gatewayUrl}${hint}`);
       });
-  }, [sdk]);
+  }, [sdk, gatewayUrl, gatewayProbe]);
 
   useEffect(() => {
     sdk
@@ -658,6 +666,15 @@ export function App() {
             </strong>
             <span>{gatewayInfo}</span>
           </div>
+          <button
+            type="button"
+            className="btn btnGhost"
+            title="Retry gateway health check"
+            disabled={gatewayOk === null}
+            onClick={() => setGatewayProbe((n) => n + 1)}
+          >
+            Reconnect
+          </button>
           <div className="pill">
             <strong>USER</strong>
             <span className="mono">{userId ? userId : "—"}</span>
